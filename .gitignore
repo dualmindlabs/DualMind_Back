@@ -1,0 +1,31 @@
+# Build artifacts
+bin/
+obj/
+packages/
+TestResults/
+*.log
+*.tmp
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.slnx
+*.aps
+*.ncb
+*.opendb
+*.VC.db
+ipch/
+_ReSharper*/
+
+# Publish
+app.publish/
+
+# Env/config
+.env
+
+# Others
+*.Cache
+*.DS_Store
+Thumbs.db
+    
