@@ -17,20 +17,18 @@ namespace DualMind_Back.Controllers
         {
             if (request == null || request.ComparisonId == Guid.Empty)
             {
-                return Content(HttpStatusCode.BadRequest, new
-                {
-                    error = "ComparisonId is required",
-                    code = "INVALID_REQUEST"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(
+                    "ComparisonId is required",
+                    "INVALID_REQUEST");
+                return Content(HttpStatusCode.BadRequest, error);
             }
 
             if (string.IsNullOrWhiteSpace(request.WinnerModelName))
             {
-                return Content(HttpStatusCode.BadRequest, new
-                {
-                    error = "WinnerModelName is required",
-                    code = "INVALID_REQUEST"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(
+                    "WinnerModelName is required",
+                    "INVALID_REQUEST");
+                return Content(HttpStatusCode.BadRequest, error);
             }
 
             try
@@ -51,11 +49,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "VOTE_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "VOTE_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
 
@@ -71,11 +66,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "STATS_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "STATS_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
     }

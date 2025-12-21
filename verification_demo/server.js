@@ -77,7 +77,12 @@ app.post('/api/speech', async (req, res) => {
 
     } catch (error) {
         console.error("Speech error:", error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            code: "SPEECH_API_ERROR",
+            timestamp: new Date().toISOString()
+        });
     }
 });
 

@@ -19,9 +19,12 @@ namespace DualMind_Back.Controllers
         [Route("generate")]
         public async Task<IHttpActionResult> Generate([FromBody] SpeechRequest request)
         {
-            if (string.IsNullOrEmpty(request.Text))
+            if (request == null || string.IsNullOrEmpty(request.Text))
             {
-                return BadRequest("Text is required");
+                var error = ResponseFormatter.FormatErrorResponse(
+                    "Text is required",
+                    "INVALID_REQUEST");
+                return Content(System.Net.HttpStatusCode.BadRequest, error);
             }
 
             try
@@ -43,7 +46,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                var error = ResponseFormatter.FormatErrorResponse(ex);
+                return Content(System.Net.HttpStatusCode.InternalServerError, error);
             }
         }
     }

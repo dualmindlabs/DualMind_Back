@@ -48,5 +48,17 @@ namespace DualMind_Back.Services
                 timestamp = DateTime.UtcNow
             };
         }
+
+        public static object FormatErrorResponse(Exception ex, string code = "API_ERROR")
+        {
+            return new
+            {
+                success = false,
+                error = ex.Message,
+                code = code,
+                details = ex.InnerException?.Message,
+                timestamp = DateTime.UtcNow
+            };
+        }
     }
 }
