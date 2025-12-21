@@ -11,6 +11,7 @@ namespace DualMind_Back.Services
     {
         private readonly HttpClient _client;
         private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
+        private const string GroqSpeechApiUrl = "https://api.groq.com/openai/v1/audio/speech";
 
         public GroqService()
         {
@@ -65,6 +66,30 @@ namespace DualMind_Back.Services
                 CompletionTokens = usage?["completion_tokens"]?.Value<int>() ?? 0,
                 TotalTokens = usage?["total_tokens"]?.Value<int>() ?? 0
             };
+        }
+
+        public async Task<byte[]> GenerateSpeechAsync(string text, string voice = "Celeste-PlayAI")
+        {
+            var requestBody = new
+            {
+                model = "playai-tts",
+                input = text,
+                voice = voice,
+                response_format = "wav"
+            };
+
+            var json = JsonConvert.SerializeObject(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _client.PostAsync(GroqSpeechApiUrl, content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Groq Speech API error ({response.StatusCode}): {responseContent}");
+            }
+
+            return await response.Content.ReadAsByteArrayAsync();
         }
     }
 

@@ -28,11 +28,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "THREADS_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "THREADS_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
 
@@ -54,11 +51,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "THREAD_CREATE_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "THREAD_CREATE_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
 
@@ -79,11 +73,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "THREAD_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "THREAD_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
 
@@ -100,11 +91,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    error = ex.Message,
-                    code = "MESSAGES_ERROR"
-                });
+                var error = ResponseFormatter.FormatErrorResponse(ex, "MESSAGES_ERROR");
+                return Content(HttpStatusCode.InternalServerError, error);
             }
         }
     }

@@ -40,7 +40,8 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                var error = ResponseFormatter.FormatErrorResponse(ex, "MODELS_ERROR");
+                return Content(System.Net.HttpStatusCode.InternalServerError, error);
             }
         }
     }
