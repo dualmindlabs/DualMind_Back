@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web.Http;
+using System.Web.Http.Controllers;
 using DualMind_Back.Models;
 using DualMind_Back.Services;
 
@@ -27,6 +28,20 @@ namespace DualMind_Back.Controllers
                     chat = new { method = "POST", path = "/api/arena/chat" },
                     dualchat = new { method = "POST", path = "/api/arena/dualchat" }
                 }
+            });
+        }
+
+        [HttpGet]
+        [Route("ping")]
+        [AllowAnonymous]
+        public IHttpActionResult Ping()
+        {
+            return Ok(new
+            {
+                success = true,
+                message = "DualMind API is running",
+                timestamp = DateTime.UtcNow,
+                version = "1.0.0"
             });
         }
 
