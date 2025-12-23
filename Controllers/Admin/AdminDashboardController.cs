@@ -235,5 +235,29 @@ namespace DualMind_Back.Controllers.Admin
                 });
             }
         }
+
+        // GET api/admin/check - Check if current user is admin
+        [HttpGet]
+        [Route("../../check")]
+        public async Task<IHttpActionResult> CheckAdmin()
+        {
+            try
+            {
+                var userIdClaim = User?.Identity?.Name; // Assuming user ID is in Name claim from JWT
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Ok(new { success = false, is_admin = false, error = "No user ID in token" });
+                }
+
+                var adminResult = await _supabase.GetAllAsync("admins", $"user_id=eq.{userIdClaim}");
+                var isAdmin = !string.IsNullOrEmpty(adminResult) && adminResult.Contains(userIdClaim);
+
+                return Ok(new { success = true, is_admin = isAdmin });
+            }
+            catch (Exception ex)
+            {
+                return Content(HttpStatusCode.InternalServerError, new { success = false, is_admin = false, error = ex.Message });
+            }
+        }
     }
 }
