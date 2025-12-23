@@ -69,6 +69,13 @@
     <Compile Include="Controllers\ModelsController.cs" />
     <Compile Include="Controllers\ThreadsController.cs" />
     <Compile Include="Controllers\VotesController.cs" />
+    <Compile Include="Controllers\Admin\AdminAIModelsController.cs" />
+    <Compile Include="Controllers\Admin\AdminComparisonsController.cs" />
+    <Compile Include="Controllers\Admin\AdminDashboardController.cs" />
+    <Compile Include="Controllers\Admin\AdminModelVotesController.cs" />
+    <Compile Include="Controllers\Admin\AdminThreadMessagesController.cs" />
+    <Compile Include="Controllers\Admin\AdminThreadsController.cs" />
+    <Compile Include="Controllers\Admin\AdminUsersController.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
@@ -77,6 +84,7 @@
     <Compile Include="Models\ChatResponse.cs" />
     <Compile Include="Models\ThreadModels.cs" />
     <Compile Include="Models\VoteModels.cs" />
+    <Compile Include="Models\AdminModels.cs" />
     <Compile Include="Services\ComparisonLogger.cs" />
     <Compile Include="Services\EnvConfig.cs" />
     <Compile Include="Services\GroqService.cs" />
@@ -89,6 +97,7 @@
     <Compile Include="Services\SupabaseService.cs" />
     <Compile Include="Services\ThreadMessagesService.cs" />
     <Compile Include="Services\ThreadsService.cs" />
+    <Compile Include="Services\AdminSupabaseClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
