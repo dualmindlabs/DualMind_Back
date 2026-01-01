@@ -65,7 +65,7 @@
     <Compile Include="Controllers\SpeechController.cs" />
     <Compile Include="App_Start\SupabaseAuth.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
-    <Compile Include="Controllers\ArenaController.cs" />
+    <Compile Include="Controllers\Api\ArenaController.cs" />
     <Compile Include="Controllers\ModelsController.cs" />
     <Compile Include="Controllers\ThreadsController.cs" />
     <Compile Include="Controllers\VotesController.cs" />
@@ -80,24 +80,33 @@
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
     <Compile Include="Models\AIModelDto.cs" />
-    <Compile Include="Models\ChatRequest.cs" />
-    <Compile Include="Models\ChatResponse.cs" />
-    <Compile Include="Models\ThreadModels.cs" />
-    <Compile Include="Models\VoteModels.cs" />
-    <Compile Include="Models\AdminModels.cs" />
-    <Compile Include="Services\ComparisonLogger.cs" />
-    <Compile Include="Services\EnvConfig.cs" />
-    <Compile Include="Services\GroqService.cs" />
-    <Compile Include="Services\JwtHelper.cs" />
-    <Compile Include="Services\LeaderboardModelSelector.cs" />
-    <Compile Include="Services\MessageLogger.cs" />
-    <Compile Include="Services\ModelSelector.cs" />
-    <Compile Include="Services\ModelStatsService.cs" />
-    <Compile Include="Services\ResponseFormatter.cs" />
-    <Compile Include="Services\SupabaseService.cs" />
-    <Compile Include="Services\ThreadMessagesService.cs" />
-    <Compile Include="Services\ThreadsService.cs" />
-    <Compile Include="Services\AdminSupabaseClient.cs" />
+    <Compile Include="AI\Contracts\ChatRequest.cs" />
+    <Compile Include="AI\Contracts\ChatResponse.cs" />
+    <Compile Include="AI\Contracts\AIStreamEvent.cs" />
+    <Compile Include="AI\Contracts\IChatProvider.cs" />
+    <Compile Include="AI\Gateway\ChatProviderFactory.cs" />
+    <Compile Include="AI\Providers\GroqService.cs" />
+    <Compile Include="AI\Providers\BytezService.cs" />
+    <Compile Include="Core\Models\ThreadModels.cs" />
+    <Compile Include="Core\Models\VoteModels.cs" />
+    <Compile Include="Core\Exceptions\ProviderExhaustedException.cs" />
+    <Compile Include="Core\Models\AdminModels.cs" />
+    <Compile Include="Core\Services\ComparisonLogger.cs" />
+    <Compile Include="Core\Services\ProviderErrorClassifier.cs" />
+    <Compile Include="Core\Services\ProviderConfigService.cs" />
+    <Compile Include="Core\Services\EncryptionService.cs" />
+    <Compile Include="Core\Models\ProviderModels.cs" />
+    <Compile Include="Controllers\Admin\ProvidersController.cs" />
+    <Compile Include="Infrastructure\Configuration\EnvConfig.cs" />
+    <Compile Include="Infrastructure\Security\JwtHelper.cs" />
+    <Compile Include="Core\Services\LeaderboardModelSelector.cs" />
+    <Compile Include="Core\Services\MessageLogger.cs" />
+    <Compile Include="Core\Services\ModelSelector.cs" />
+    <Compile Include="Core\Services\ModelStatsService.cs" />
+    <Compile Include="Infrastructure\Data\SupabaseService.cs" />
+    <Compile Include="Core\Services\ThreadMessagesService.cs" />
+    <Compile Include="Core\Services\ThreadsService.cs" />
+    <Compile Include="Infrastructure\Data\AdminSupabaseClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

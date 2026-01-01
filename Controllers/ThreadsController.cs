@@ -2,8 +2,8 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Models;
-using DualMind_Back.Services;
+using DualMind_Back.Core.Models;
+using DualMind_Back.Core.Services;
 
 namespace DualMind_Back.Controllers
 {
@@ -28,8 +28,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "THREADS_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "THREADS_ERROR" 
+                });
             }
         }
 
@@ -51,8 +55,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "THREAD_CREATE_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "THREAD_CREATE_ERROR" 
+                });
             }
         }
 
@@ -73,8 +81,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "THREAD_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "THREAD_ERROR" 
+                });
             }
         }
 
@@ -91,8 +103,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "MESSAGES_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "MESSAGES_ERROR" 
+                });
             }
         }
     }

@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Models;
-using DualMind_Back.Services;
+using DualMind_Back.Core.Models;
+using DualMind_Back.Infrastructure.Data;
 using Newtonsoft.Json;
 
 namespace DualMind_Back.Controllers.Admin

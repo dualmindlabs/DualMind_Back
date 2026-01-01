@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Services;
+using DualMind_Back.AI.Providers;
 
 namespace DualMind_Back.Controllers
 {
@@ -21,10 +21,12 @@ namespace DualMind_Back.Controllers
         {
             if (request == null || string.IsNullOrEmpty(request.Text))
             {
-                var error = ResponseFormatter.FormatErrorResponse(
-                    "Text is required",
-                    "INVALID_REQUEST");
-                return Content(System.Net.HttpStatusCode.BadRequest, error);
+                return Content(System.Net.HttpStatusCode.BadRequest, new 
+                { 
+                    success = false, 
+                    error = "Text is required", 
+                    code = "INVALID_REQUEST" 
+                });
             }
 
             try
@@ -46,8 +48,11 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex);
-                return Content(System.Net.HttpStatusCode.InternalServerError, error);
+                return Content(System.Net.HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message 
+                });
             }
         }
     }

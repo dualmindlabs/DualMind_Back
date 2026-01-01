@@ -2,8 +2,8 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Models;
-using DualMind_Back.Services;
+using DualMind_Back.Core.Models;
+using DualMind_Back.Core.Services;
 
 namespace DualMind_Back.Controllers
 {
@@ -17,18 +17,22 @@ namespace DualMind_Back.Controllers
         {
             if (request == null || request.ComparisonId == Guid.Empty)
             {
-                var error = ResponseFormatter.FormatErrorResponse(
-                    "ComparisonId is required",
-                    "INVALID_REQUEST");
-                return Content(HttpStatusCode.BadRequest, error);
+                return Content(HttpStatusCode.BadRequest, new 
+                { 
+                    success = false, 
+                    error = "ComparisonId is required", 
+                    code = "INVALID_REQUEST" 
+                });
             }
 
             if (string.IsNullOrWhiteSpace(request.WinnerModelName))
             {
-                var error = ResponseFormatter.FormatErrorResponse(
-                    "WinnerModelName is required",
-                    "INVALID_REQUEST");
-                return Content(HttpStatusCode.BadRequest, error);
+                return Content(HttpStatusCode.BadRequest, new 
+                { 
+                    success = false, 
+                    error = "WinnerModelName is required", 
+                    code = "INVALID_REQUEST" 
+                });
             }
 
             try
@@ -49,8 +53,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "VOTE_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "VOTE_ERROR" 
+                });
             }
         }
 
@@ -66,8 +74,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "STATS_ERROR");
-                return Content(HttpStatusCode.InternalServerError, error);
+                return Content(HttpStatusCode.InternalServerError, new 
+                { 
+                    success = false, 
+                    error = ex.Message, 
+                    code = "STATS_ERROR" 
+                });
             }
         }
     }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Services;
+using DualMind_Back.Infrastructure.Data;
 using Newtonsoft.Json.Linq;
 
 namespace DualMind_Back.Controllers
@@ -40,8 +40,12 @@ namespace DualMind_Back.Controllers
             }
             catch (Exception ex)
             {
-                var error = ResponseFormatter.FormatErrorResponse(ex, "MODELS_ERROR");
-                return Content(System.Net.HttpStatusCode.InternalServerError, error);
+                return Content(System.Net.HttpStatusCode.InternalServerError, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    code = "MODELS_ERROR"
+                });
             }
         }
     }

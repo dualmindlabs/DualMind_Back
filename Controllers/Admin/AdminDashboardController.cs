@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using System.Web.Http;
-using DualMind_Back.Models;
-using DualMind_Back.Services;
+using DualMind_Back.Core.Models;
+using DualMind_Back.Core.Services;
+using DualMind_Back.Infrastructure.Data;
 using Newtonsoft.Json;
 
 namespace DualMind_Back.Controllers.Admin
@@ -13,10 +15,12 @@ namespace DualMind_Back.Controllers.Admin
     public class AdminDashboardController : ApiController
     {
         private readonly AdminSupabaseClient _supabase;
+        private readonly ProviderConfigService _providerConfig;
 
         public AdminDashboardController()
         {
             _supabase = new AdminSupabaseClient();
+            _providerConfig = new ProviderConfigService();
         }
 
         // GET api/admin/dashboard/stats - Get overall statistics
@@ -32,6 +36,21 @@ namespace DualMind_Back.Controllers.Admin
                 var threadsCount = await _supabase.CountFastAsync("threads", "thread_id");
                 var messagesCount = await _supabase.CountFastAsync("thread_messages", "message_id");
                 var votesCount = await _supabase.CountFastAsync("model_votes", "vote_id");
+                
+                // Provider statistics
+                await _providerConfig.RefreshConfigAsync();
+                var providers = await _providerConfig.GetAllProvidersAsync();
+                var providersCount = providers.Count;
+                var enabledProvidersCount = providers.Count(p => p.IsEnabled);
+                
+                var totalKeys = 0;
+                var activeKeys = 0;
+                foreach (var provider in providers)
+                {
+                    var keys = await _providerConfig.GetKeysForProviderAsync(provider.ProviderName);
+                    totalKeys += keys.Count;
+                    activeKeys += keys.Count(k => k.IsActive);
+                }
 
                 return Ok(new
                 {
@@ -43,7 +62,19 @@ namespace DualMind_Back.Controllers.Admin
                         comparisons = comparisonsCount,
                         threads = threadsCount,
                         thread_messages = messagesCount,
-                        votes = votesCount
+                        votes = votesCount,
+                        providers = new
+                        {
+                            total = providersCount,
+                            enabled = enabledProvidersCount,
+                            disabled = providersCount - enabledProvidersCount
+                        },
+                        provider_keys = new
+                        {
+                            total = totalKeys,
+                            active = activeKeys,
+                            inactive = totalKeys - activeKeys
+                        }
                     }
                 });
             }
@@ -236,27 +267,46 @@ namespace DualMind_Back.Controllers.Admin
             }
         }
 
-        // GET api/admin/check - Check if current user is admin
+        // GET api/admin/dashboard/provider-stats - Get provider statistics
         [HttpGet]
-        [Route("../../check")]
-        public async Task<IHttpActionResult> CheckAdmin()
+        [Route("provider-stats")]
+        public async Task<IHttpActionResult> GetProviderStats()
         {
             try
             {
-                var userIdClaim = User?.Identity?.Name; // Assuming user ID is in Name claim from JWT
-                if (string.IsNullOrEmpty(userIdClaim))
+                await _providerConfig.RefreshConfigAsync();
+                var providers = await _providerConfig.GetAllProvidersAsync();
+                
+                var providerStats = new List<object>();
+                foreach (var provider in providers)
                 {
-                    return Ok(new { success = false, is_admin = false, error = "No user ID in token" });
+                    var keys = await _providerConfig.GetKeysForProviderAsync(provider.ProviderName);
+                    var activeKeys = keys.Count(k => k.IsActive);
+                    var keysInCooldown = keys.Count(k => k.CooldownUntil.HasValue && k.CooldownUntil.Value > DateTime.UtcNow);
+                    var totalCalls = keys.Sum(k => k.TotalCalls);
+                    var totalFailures = keys.Sum(k => k.FailureCount);
+                    
+                    providerStats.Add(new
+                    {
+                        provider_name = provider.ProviderName,
+                        display_name = provider.DisplayName,
+                        is_enabled = provider.IsEnabled,
+                        priority = provider.Priority,
+                        total_keys = keys.Count,
+                        active_keys = activeKeys,
+                        inactive_keys = keys.Count - activeKeys,
+                        keys_in_cooldown = keysInCooldown,
+                        total_calls = totalCalls,
+                        total_failures = totalFailures,
+                        failure_rate = totalCalls > 0 ? Math.Round((double)totalFailures / totalCalls * 100, 2) : 0
+                    });
                 }
-
-                var adminResult = await _supabase.GetAllAsync("admins", $"user_id=eq.{userIdClaim}");
-                var isAdmin = !string.IsNullOrEmpty(adminResult) && adminResult.Contains(userIdClaim);
-
-                return Ok(new { success = true, is_admin = isAdmin });
+                
+                return Ok(new { success = true, data = providerStats });
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new { success = false, is_admin = false, error = ex.Message });
+                return Content(HttpStatusCode.InternalServerError, new { success = false, error = ex.Message });
             }
         }
     }

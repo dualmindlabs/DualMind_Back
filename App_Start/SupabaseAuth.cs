@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using System.Web.Http;
 using System.Web.Http.Controllers;
 using System.Web.Http.Filters;
-using DualMind_Back.Services;
+using DualMind_Back.Infrastructure.Security;
 
 namespace DualMind_Back.App_Start
 {

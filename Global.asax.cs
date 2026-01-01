@@ -1,7 +1,7 @@
 using System;
 using System.Web;
 using System.Web.Http;
-using DualMind_Back.Services;
+using DualMind_Back.Infrastructure.Configuration;
 
 namespace DualMind_Back
 {
@@ -18,6 +18,16 @@ namespace DualMind_Back
         {
             var ctx = HttpContext.Current;
             if (ctx == null) return;
+
+            // Handle health endpoint directly (simple version)
+            if (ctx.Request.Path == "/health" && ctx.Request.HttpMethod == "GET")
+            {
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.StatusCode = 200;
+                ctx.Response.Write("{\"status\":\"healthy\",\"message\":\"DualMind API is running\",\"timestamp\":\"" + DateTime.UtcNow.ToString("o") + "\",\"version\":\"1.0.0\"}");
+                ctx.ApplicationInstance.CompleteRequest();
+                return;
+            }
 
             // Normalize CORS early (before anything writes to the response).
             // This avoids exceptions like "Cannot append header after HTTP headers have been sent".
