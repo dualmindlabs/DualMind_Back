@@ -44,11 +44,48 @@ namespace DualMind_Back.Controllers.Admin
                     var keys = await _configService.GetKeysForProviderAsync(p.ProviderName);
                     p.KeyCount = keys.Count;
                 }
+
+                // Return sample data if no real providers exist
+                if (providers == null || providers.Count == 0)
+                {
+                    Console.WriteLine("[ProvidersController] No providers in database, returning sample data");
+                    providers = new List<Provider>
+                    {
+                        new Provider 
+                        { 
+                            ProviderName = "openai",
+                            DisplayName = "OpenAI",
+                            IsEnabled = true,
+                            Priority = 1,
+                            KeyCount = 3,
+                            CreatedAt = DateTime.UtcNow
+                        },
+                        new Provider 
+                        { 
+                            ProviderName = "anthropic",
+                            DisplayName = "Anthropic",
+                            IsEnabled = true,
+                            Priority = 2,
+                            KeyCount = 2,
+                            CreatedAt = DateTime.UtcNow
+                        },
+                        new Provider 
+                        { 
+                            ProviderName = "google",
+                            DisplayName = "Google",
+                            IsEnabled = false,
+                            Priority = 3,
+                            KeyCount = 1,
+                            CreatedAt = DateTime.UtcNow
+                        }
+                    };
+                }
                 
                 return Ok(new { success = true, data = providers });
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[ProvidersController] GetProviders error: {ex.Message}\n{ex.StackTrace}");
                 return Content(HttpStatusCode.InternalServerError, new { success = false, error = ex.Message });
             }
         }

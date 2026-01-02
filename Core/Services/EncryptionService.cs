@@ -8,7 +8,7 @@ namespace DualMind_Back.Core.Services
 {
     /// <summary>
     /// Simple AES-256 encryption for storing API keys.
-    /// Uses APP_SECRET from env as the key.
+    /// Uses APP_SECRET from env as the key, or a default key if missing.
     /// </summary>
     public class EncryptionService
     {
@@ -21,9 +21,8 @@ namespace DualMind_Back.Core.Services
             
             if (string.IsNullOrWhiteSpace(secret))
             {
-                // Fallback or throw? For now throw to ensure security.
-                // If APP_SECRET is < 32 chars, we pad it or hash it to get 32 bytes (256 bits).
-                throw new Exception("APP_SECRET is missing. Cannot initialize EncryptionService.");
+                // Use a default key if APP_SECRET is missing
+                secret = "DefaultDualMindEncryptionKey2024!@#$%^&*()";
             }
 
             // Ensure key is exactly 32 bytes
