@@ -4,10 +4,12 @@ using System.Web.Http;
 namespace DualMind_Back.Controllers
 {
     // Health Controller for API health checks
+    [RoutePrefix("")]
     public class HealthController : ApiController
     {
         [HttpGet]
-        [Route("")]
+        [Route("health")]
+        [AllowAnonymous]
         public IHttpActionResult Get()
         {
             return Ok(new

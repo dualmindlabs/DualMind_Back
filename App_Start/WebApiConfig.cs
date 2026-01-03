@@ -10,12 +10,7 @@ namespace DualMind_Back.App_Start
         {
             config.MapHttpAttributeRoutes();
 
-            // Custom route for health endpoint
-            config.Routes.MapHttpRoute(
-                name: "HealthApi",
-                routeTemplate: "health",
-                defaults: new { controller = "Ping", action = "Health" }
-            );
+            // Health endpoint is handled by HealthController with attribute routing
 
             config.Routes.MapHttpRoute(
                 name: "DefaultApi",
