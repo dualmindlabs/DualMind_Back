@@ -24,7 +24,12 @@ namespace DualMind_Back.Core.Services
 
                 foreach (var model in models)
                 {
-                    var modelId = Guid.Parse(model["model_id"].ToString());
+                    if (model["model_id"] == null || model["model_id"].Type == JTokenType.Null)
+                        continue;
+
+                    if (!Guid.TryParse(model["model_id"].ToString(), out var modelId))
+                        continue;
+
                     stats[modelId] = new ModelStatsDto
                     {
                         ModelId = modelId,
@@ -40,14 +45,12 @@ namespace DualMind_Back.Core.Services
                 {
                     if (comp["model1_id"] != null && comp["model1_id"].Type != JTokenType.Null)
                     {
-                        var id = Guid.Parse(comp["model1_id"].ToString());
-                        if (stats.ContainsKey(id))
+                        if (Guid.TryParse(comp["model1_id"].ToString(), out var id) && stats.ContainsKey(id))
                             stats[id].TotalResponses++;
                     }
                     if (comp["model2_id"] != null && comp["model2_id"].Type != JTokenType.Null)
                     {
-                        var id = Guid.Parse(comp["model2_id"].ToString());
-                        if (stats.ContainsKey(id))
+                        if (Guid.TryParse(comp["model2_id"].ToString(), out var id) && stats.ContainsKey(id))
                             stats[id].TotalResponses++;
                     }
                 }
@@ -56,8 +59,7 @@ namespace DualMind_Back.Core.Services
                 {
                     if (vote["winner_model_id"] != null && vote["winner_model_id"].Type != JTokenType.Null)
                     {
-                        var id = Guid.Parse(vote["winner_model_id"].ToString());
-                        if (stats.ContainsKey(id))
+                        if (Guid.TryParse(vote["winner_model_id"].ToString(), out var id) && stats.ContainsKey(id))
                             stats[id].TotalWins++;
                     }
                 }
@@ -87,11 +89,20 @@ namespace DualMind_Back.Core.Services
         {
             try
             {
-                var models = await _supabase.SelectAsync<JObject>("ai_models", "model_id", $"model_name=eq.{winnerModelName}");
+                // Sanitize model name to prevent injection (PostgREST handles this, but we validate anyway)
+                var sanitizedModelName = winnerModelName?.Trim();
+                if (string.IsNullOrWhiteSpace(sanitizedModelName))
+                    throw new ArgumentException("Winner model name cannot be empty", nameof(winnerModelName));
+
+                var models = await _supabase.SelectAsync<JObject>("ai_models", "model_id", $"model_name=eq.{sanitizedModelName}");
                 if (models == null || models.Count == 0)
                     throw new Exception($"Model not found: {winnerModelName}");
 
-                var winnerModelId = Guid.Parse(models[0]["model_id"].ToString());
+                if (models[0]["model_id"] == null || models[0]["model_id"].Type == JTokenType.Null)
+                    throw new Exception($"Model ID is null for model: {winnerModelName}");
+
+                if (!Guid.TryParse(models[0]["model_id"].ToString(), out var winnerModelId))
+                    throw new Exception($"Invalid model ID format for model: {winnerModelName}");
 
                 var vote = new
                 {

@@ -21,14 +21,10 @@ namespace DualMind_Back.Core.Services
         private static DateTime _lastCacheUpdate = DateTime.MinValue;
         private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
         private static readonly object _lock = new object();
-        
-        // For decryption if needed internally
-        private readonly EncryptionService _encryptionService;
 
         public ProviderConfigService()
         {
             _supabase = new AdminSupabaseClient();
-            _encryptionService = new EncryptionService();
         }
 
         /// <summary>
@@ -130,32 +126,17 @@ namespace DualMind_Back.Core.Services
             if (!candidates.Any()) return null;
 
             // 3. Pick one (Least Recently Used)
-            // We want to rotate, so picking LRU is good.
             var selectedKey = candidates.OrderBy(k => k.LastUsedAt ?? DateTime.MinValue).First();
 
-            // 4. Decrypt
-            try 
-            {
-                var secret = _encryptionService.Decrypt(selectedKey.EncryptedApiKey);
-                
-                // Update LastUsedAt in memory immediately to rotate LRU on next call
-                // Note: We don't write to DB for every read to save IO, or we could do it async.
-                // For now, let's keep it in-memory for the session or update DB periodically.
-                // To keep it simple: we rely on in-memory LRU for session rotation.
-                selectedKey.LastUsedAt = DateTime.UtcNow; 
-                
-                return new DecryptedProviderKey 
-                { 
-                    KeyId = selectedKey.KeyId, 
-                    ProviderName = providerName, 
-                    Ticket = secret 
-                };
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error decrypting key for provider {providerName}: {ex.Message}");
-                return null;
-            }
+            // 4. Return plain API key
+            selectedKey.LastUsedAt = DateTime.UtcNow; 
+            
+            return new DecryptedProviderKey 
+            { 
+                KeyId = selectedKey.KeyId, 
+                ProviderName = providerName, 
+                Ticket = selectedKey.ApiKey
+            };
         }
 
         public async Task ReportKeySuccessAsync(Guid keyId)

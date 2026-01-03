@@ -1,4 +1,3 @@
-C:\Users\Harshu\source\repos\DualMind_Back\bin\DualMind_Back.dll.config
 C:\Users\Harshu\source\repos\DualMind_Back\bin\DualMind_Back.dll
 C:\Users\Harshu\source\repos\DualMind_Back\bin\DualMind_Back.pdb
 C:\Users\Harshu\source\repos\DualMind_Back\bin\roslyn\csc.exe

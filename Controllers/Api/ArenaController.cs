@@ -381,9 +381,11 @@ namespace DualMind_Back.Controllers.Api
             var response = Request.CreateResponse();
             response.Content = new PushStreamContent(async (stream, content, context) =>
             {
-                var sw = new System.IO.StreamWriter(stream);
+                System.IO.StreamWriter sw = null;
                 try
                 {
+                    sw = new System.IO.StreamWriter(stream);
+                    
                     var selectedModel = string.IsNullOrWhiteSpace(request.Model) || request.Model == "auto"
                         ? await ModelSelector.GetRandomModelAsync()
                         : request.Model;
@@ -391,27 +393,39 @@ namespace DualMind_Back.Controllers.Api
                     var info = ModelSelector.GetModelInfo(selectedModel);
                     var providerName = info?.Provider ?? "groq";
 
+                    // GetProvider now always returns a provider (falls back to Groq if not found)
+                    // No need for try-catch here anymore, but keeping for extra safety
                     IChatProvider provider;
                     try
                     {
                         provider = ChatProviderFactory.GetProvider(providerName);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Fallback to Groq if provider resolution fails
+                        // This should rarely happen now since GetProvider falls back to Groq
+                        // But keeping as extra safety net
+                        System.Diagnostics.Debug.WriteLine($"Provider resolution failed: {ex.Message}, falling back to Groq");
                         provider = ChatProviderFactory.GetGroqProvider();
                     }
 
                     // Helper to write SSE events
                     Func<AIStreamEvent, Task> onEvent = async (e) =>
                     {
-                        var json = JsonConvert.SerializeObject(e, new JsonSerializerSettings 
-                        { 
-                            NullValueHandling = NullValueHandling.Ignore,
-                            ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
-                        });
-                        await sw.WriteLineAsync($"data: {json}\n");
-                        await sw.FlushAsync();
+                        try
+                        {
+                            var json = JsonConvert.SerializeObject(e, new JsonSerializerSettings 
+                            { 
+                                NullValueHandling = NullValueHandling.Ignore,
+                                ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
+                            });
+                            await sw.WriteLineAsync($"data: {json}\n");
+                            await sw.FlushAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Failed to write SSE event: {ex.Message}");
+                            // Don't throw - continue streaming if possible
+                        }
                     };
 
                     try 
@@ -424,27 +438,61 @@ namespace DualMind_Back.Controllers.Api
                     }
                     catch (Exception ex)
                     {
-                        // If streaming fails (e.g. provider error), try to fallback to Groq non-streaming if possible, 
-                        // OR just report error via SSE. 
+                        // If streaming fails (e.g. provider error), report error via SSE
                         // Reporting error via SSE allows frontend to handle it gracefully in the stream.
-                        var errorEvent = new
+                        try
                         {
-                            @object = "ai.error",
-                            code = "STREAM_ERROR",
-                            message = "Streaming failed: " + ex.Message
-                        };
-                         var json = JsonConvert.SerializeObject(errorEvent);
-                         await sw.WriteLineAsync($"data: {json}\n");
-                         await sw.FlushAsync();
-                    }
-                    finally
-                    {
-                        sw.Close();
+                            var errorEvent = new
+                            {
+                                @object = "ai.error",
+                                code = "STREAM_ERROR",
+                                message = "Streaming failed: " + (ex.InnerException?.Message ?? ex.Message)
+                            };
+                            var json = JsonConvert.SerializeObject(errorEvent);
+                            await sw.WriteLineAsync($"data: {json}\n");
+                            await sw.FlushAsync();
+                        }
+                        catch
+                        {
+                            // If we can't even write the error, just close
+                        }
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    sw.Close();
+                    System.Diagnostics.Debug.WriteLine($"StreamChat error: {ex.Message}");
+                    // Try to write error if stream is still open
+                    try
+                    {
+                        if (sw != null)
+                        {
+                            var errorEvent = new
+                            {
+                                @object = "ai.error",
+                                code = "STREAM_INIT_ERROR",
+                                message = "Failed to initialize stream: " + (ex.InnerException?.Message ?? ex.Message)
+                            };
+                            var json = JsonConvert.SerializeObject(errorEvent);
+                            await sw.WriteLineAsync($"data: {json}\n");
+                            await sw.FlushAsync();
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore - stream may be closed
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        sw?.Close();
+                        sw?.Dispose();
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors
+                    }
                 }
             }, "text/event-stream");
 
@@ -458,30 +506,49 @@ namespace DualMind_Back.Controllers.Api
 
             try
             {
+                // GetProvider now always returns a provider (falls back to Groq if not found)
                 var provider = ChatProviderFactory.GetProvider(providerName);
                 var response = await provider.ChatAsync(model, prompt, system, maxTokens);
                 return (response, model);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Simple Fallback Logic:
-                // If the provider was NOT Groq, try to fallback to Groq using a safe model.
+                // Enhanced Fallback Logic:
+                // If the provider was NOT Groq, or if any error occurs, try to fallback to Groq using a safe model.
                 if (!providerName.Equals("groq", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
+                        System.Diagnostics.Debug.WriteLine($"Provider '{providerName}' failed for model '{model}', falling back to Groq: {ex.Message}");
                         var fallbackModel = "mixtral-8x7b-32768";
+                        var groq = ChatProviderFactory.GetGroqProvider();
+                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens);
+                        return (response, fallbackModel);
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        // If fallback also fails, log and rethrow
+                        System.Diagnostics.Debug.WriteLine($"Groq fallback also failed: {fallbackEx.Message}");
+                        throw new Exception($"Both primary provider '{providerName}' and Groq fallback failed. Original: {ex.Message}, Fallback: {fallbackEx.Message}", ex);
+                    }
+                }
+                else
+                {
+                    // If Groq itself failed, try with a different Groq model as last resort
+                    try
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Groq failed for model '{model}', trying alternative Groq model: {ex.Message}");
+                        var fallbackModel = "llama-3.1-70b-versatile";
                         var groq = ChatProviderFactory.GetGroqProvider();
                         var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens);
                         return (response, fallbackModel);
                     }
                     catch
                     {
-                        // If fallback also fails, rethrow original (or new)
+                        // If all fails, rethrow original
                         throw;
                     }
                 }
-                throw;
             }
         }
     }

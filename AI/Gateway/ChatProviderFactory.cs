@@ -23,7 +23,10 @@ namespace DualMind_Back.AI.Gateway
                 case "bytez":
                     return _bytezService;
                 default:
-                    throw new ArgumentException($"Unknown AI provider: {providerName}. Supported: groq, bytez");
+                    // Fallback to Groq when provider is not found (instead of throwing exception)
+                    // This ensures the API continues working even if provider name is invalid or missing
+                    System.Diagnostics.Debug.WriteLine($"Warning: Unknown provider '{providerName}', falling back to Groq");
+                    return _groqService;
             }
         }
 

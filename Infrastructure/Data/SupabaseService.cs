@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using DualMind_Back.Infrastructure.Configuration;
@@ -37,9 +38,17 @@ namespace DualMind_Back.Infrastructure.Data
 
         public async Task<List<T>> SelectAsync<T>(string table, string select = "*", string filter = null)
         {
-            var url = $"{RestUrl}/{table}?select={select}";
+            // Validate table name to prevent injection
+            if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
+                throw new ArgumentException("Invalid table name", nameof(table));
+
+            var encodedSelect = HttpUtility.UrlEncode(select);
+            var url = $"{RestUrl}/{table}?select={encodedSelect}";
             if (!string.IsNullOrEmpty(filter))
+            {
+                // Filter is already in PostgREST format (e.g., "status=eq.active"), encode it properly
                 url += $"&{filter}";
+            }
 
             var response = await _client.GetAsync(url);
             var content = await response.Content.ReadAsStringAsync();
@@ -52,7 +61,12 @@ namespace DualMind_Back.Infrastructure.Data
 
         public async Task<T> SelectSingleAsync<T>(string table, string select = "*", string filter = null)
         {
-            var url = $"{RestUrl}/{table}?select={select}";
+            // Validate table name to prevent injection
+            if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
+                throw new ArgumentException("Invalid table name", nameof(table));
+
+            var encodedSelect = HttpUtility.UrlEncode(select);
+            var url = $"{RestUrl}/{table}?select={encodedSelect}";
             if (!string.IsNullOrEmpty(filter))
                 url += $"&{filter}";
 
@@ -122,6 +136,13 @@ namespace DualMind_Back.Infrastructure.Data
 
         public async Task<List<T>> UpdateAsync<T>(string table, object data, string filter)
         {
+            // Validate table name to prevent injection
+            if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
+                throw new ArgumentException("Invalid table name", nameof(table));
+
+            if (string.IsNullOrWhiteSpace(filter))
+                throw new ArgumentException("Filter is required for update operations", nameof(filter));
+
             var url = $"{RestUrl}/{table}?{filter}";
             var json = JsonConvert.SerializeObject(data, new JsonSerializerSettings
             {
@@ -145,6 +166,13 @@ namespace DualMind_Back.Infrastructure.Data
 
         public async Task DeleteAsync(string table, string filter)
         {
+            // Validate table name to prevent injection
+            if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
+                throw new ArgumentException("Invalid table name", nameof(table));
+
+            if (string.IsNullOrWhiteSpace(filter))
+                throw new ArgumentException("Filter is required for delete operations", nameof(filter));
+
             var url = $"{RestUrl}/{table}?{filter}";
             var response = await _client.DeleteAsync(url);
 
