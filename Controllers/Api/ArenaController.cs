@@ -146,23 +146,25 @@ namespace DualMind_Back.Controllers.Api
         [Route("dualchat")]
         public async Task<IHttpActionResult> DualChat([FromBody] ChatRequest request)
         {
-            var startTime = DateTime.UtcNow;
-            var sessionId = Guid.NewGuid();
-            var comparisonId = Guid.NewGuid();
-
-            if (request == null || string.IsNullOrWhiteSpace(request.Prompt))
-            {
-                return Content(HttpStatusCode.BadRequest, new 
-                { 
-                    @object = "ai.error", 
-                    code = "INVALID_REQUEST", 
-                    message = "Prompt is required and cannot be empty", 
-                    timestamp = DateTime.UtcNow 
-                });
-            }
-
             try
             {
+                var startTime = DateTime.UtcNow;
+                var sessionId = Guid.NewGuid();
+                var comparisonId = Guid.NewGuid();
+
+                if (request == null || string.IsNullOrWhiteSpace(request.Prompt))
+                {
+                    return Content(HttpStatusCode.BadRequest, new 
+                    { 
+                        @object = "ai.error", 
+                        code = "INVALID_REQUEST", 
+                        message = "Prompt is required and cannot be empty", 
+                        timestamp = DateTime.UtcNow 
+                    });
+                }
+
+                try
+                {
                 var manual = !string.IsNullOrWhiteSpace(request.Model1) || !string.IsNullOrWhiteSpace(request.Model2);
                 string model1;
                 string model2;
@@ -356,14 +358,35 @@ namespace DualMind_Back.Controllers.Api
                 };
 
                 return Ok(dualResponse);
+                }
+                catch (Exception ex)
+                {
+                    // Log the error for debugging
+                    System.Diagnostics.Debug.WriteLine($"DualChat inner error: {ex.Message}");
+                    if (ex.InnerException != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
+                    }
+                    System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+
+                    return Content(HttpStatusCode.InternalServerError, new
+                    {
+                        @object = "ai.error",
+                        code = "API_ERROR",
+                        message = ex.InnerException?.Message ?? ex.Message ?? "An unexpected error occurred",
+                        timestamp = DateTime.UtcNow
+                    });
+                }
             }
-            catch (Exception ex)
+            catch (Exception outerEx)
             {
+                // Catch any exceptions that occur outside the inner try block
+                System.Diagnostics.Debug.WriteLine($"DualChat outer error: {outerEx.Message}");
                 return Content(HttpStatusCode.InternalServerError, new
                 {
                     @object = "ai.error",
                     code = "API_ERROR",
-                    message = ex.InnerException?.Message ?? ex.Message,
+                    message = outerEx.InnerException?.Message ?? outerEx.Message ?? "An unexpected error occurred",
                     timestamp = DateTime.UtcNow
                 });
             }

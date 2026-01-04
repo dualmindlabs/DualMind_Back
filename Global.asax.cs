@@ -19,27 +19,41 @@ namespace DualMind_Back
             var ctx = HttpContext.Current;
             if (ctx == null) return;
 
-            // Handle health endpoint directly (simple version)
-            if (ctx.Request.Path == "/health" && ctx.Request.HttpMethod == "GET")
-            {
-                ctx.Response.ContentType = "application/json";
-                ctx.Response.StatusCode = 200;
-                ctx.Response.Write("{\"status\":\"healthy\",\"message\":\"DualMind API is running\",\"timestamp\":\"" + DateTime.UtcNow.ToString("o") + "\",\"version\":\"1.0.0\"}");
-                ctx.ApplicationInstance.CompleteRequest();
-                return;
-            }
-
-            // Normalize CORS early (before anything writes to the response).
+            // Set CORS headers FIRST, before any response is written
             // This avoids exceptions like "Cannot append header after HTTP headers have been sent".
             ctx.Response.Headers.Remove("Access-Control-Allow-Origin");
+            ctx.Response.Headers.Remove("Access-Control-Allow-Methods");
+            ctx.Response.Headers.Remove("Access-Control-Allow-Headers");
+            ctx.Response.Headers.Remove("Access-Control-Max-Age");
             ctx.Response.Headers.Remove("Vary");
 
             var origin = ctx.Request?.Headers["Origin"];
-            // file:// pages send Origin: null. For that case, respond with '*'.
+            // Allow specific origins for production, or use wildcard for development
+            var allowedOrigins = new[] { 
+                "https://arena.dualmindlab.tech",
+                "https://www.arena.dualmindlab.tech",
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://localhost:8080"
+            };
+
+            bool isAllowedOrigin = false;
             if (!string.IsNullOrEmpty(origin) && !string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase))
             {
-                ctx.Response.Headers.Set("Access-Control-Allow-Origin", origin);
-                ctx.Response.Headers.Set("Vary", "Origin");
+                // Check if origin is in allowed list
+                isAllowedOrigin = Array.Exists(allowedOrigins, allowed => 
+                    string.Equals(origin, allowed, StringComparison.OrdinalIgnoreCase));
+                
+                if (isAllowedOrigin)
+                {
+                    ctx.Response.Headers.Set("Access-Control-Allow-Origin", origin);
+                    ctx.Response.Headers.Set("Vary", "Origin");
+                }
+                else
+                {
+                    // For development, allow any origin
+                    ctx.Response.Headers.Set("Access-Control-Allow-Origin", "*");
+                }
             }
             else
             {
@@ -47,13 +61,26 @@ namespace DualMind_Back
             }
 
             ctx.Response.Headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-            ctx.Response.Headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+            ctx.Response.Headers.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+            ctx.Response.Headers.Set("Access-Control-Allow-Credentials", "true");
             ctx.Response.Headers.Set("Access-Control-Max-Age", "86400");
 
+            // Handle OPTIONS preflight requests
             if (ctx.Request.HttpMethod == "OPTIONS")
             {
                 ctx.Response.StatusCode = 200;
                 ctx.ApplicationInstance.CompleteRequest();
+                return;
+            }
+
+            // Handle health endpoint directly (with CORS headers already set)
+            if (ctx.Request.Path == "/health" && ctx.Request.HttpMethod == "GET")
+            {
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.StatusCode = 200;
+                ctx.Response.Write("{\"status\":\"healthy\",\"message\":\"DualMind API is running\",\"timestamp\":\"" + DateTime.UtcNow.ToString("o") + "\",\"version\":\"1.0.0\"}");
+                ctx.ApplicationInstance.CompleteRequest();
+                return;
             }
         }
     }

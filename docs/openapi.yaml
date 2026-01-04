@@ -1,0 +1,1196 @@
+openapi: 3.0.3
+info:
+  title: DualMind Arena API
+  description: |
+    RESTful API for DualMind Arena - an AI model comparison and chat platform.
+    
+    ## Features
+    - AI-powered chat with multiple model support
+    - Arena-style dual model comparisons
+    - Model voting and leaderboard
+    - Thread management
+    - Admin dashboard and CRUD operations
+    
+    ## Authentication
+    All endpoints except `/health` and `/api/ping` require JWT authentication.
+    Include the token in the Authorization header: `Bearer <token>`
+  version: 1.0.0
+  contact:
+    name: DualMind Team
+    url: https://dualmindlab.tech
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.dualmindlab.tech
+    description: Production server
+  - url: http://localhost:65476
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Arena
+    description: Chat and arena comparison endpoints
+  - name: Models
+    description: AI model information
+  - name: Threads
+    description: Conversation thread management
+  - name: Votes
+    description: Model voting and statistics
+  - name: Speech
+    description: Text-to-speech synthesis
+  - name: Admin - Dashboard
+    description: Admin dashboard statistics
+  - name: Admin - Users
+    description: User management
+  - name: Admin - Models
+    description: AI model management
+  - name: Admin - Threads
+    description: Thread management (admin)
+  - name: Admin - Messages
+    description: Thread message management
+  - name: Admin - Comparisons
+    description: Comparison management
+  - name: Admin - Votes
+    description: Vote management
+  - name: Admin - Providers
+    description: AI provider and API key management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from Supabase authentication
+
+  schemas:
+    # Common schemas
+    Error:
+      type: object
+      required:
+        - object
+        - code
+        - message
+        - timestamp
+      properties:
+        object:
+          type: string
+          enum: [ai.error]
+          example: ai.error
+        code:
+          type: string
+          example: INVALID_REQUEST
+        message:
+          type: string
+          example: Prompt is required and cannot be empty
+        timestamp:
+          type: string
+          format: date-time
+          example: 2024-01-03T10:00:00Z
+
+    # Arena/Chat schemas
+    ChatRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          description: User message/question
+          example: What is the capital of France?
+        system:
+          type: string
+          description: System prompt (optional)
+          example: You are a helpful assistant
+        model:
+          type: string
+          description: Specific model to use (optional, defaults to auto-selection)
+          example: llama-3.1-70b-versatile
+        model1:
+          type: string
+          description: First model for side-by-side comparison
+          example: llama-3.1-70b-versatile
+        model2:
+          type: string
+          description: Second model for side-by-side comparison
+          example: mixtral-8x7b-32768
+        maxTokens:
+          type: integer
+          description: Maximum tokens in response
+          example: 4096
+        selectionMode:
+          type: string
+          enum: [random, topper, manual]
+          description: Model selection strategy
+          example: random
+        threadId:
+          type: string
+          format: uuid
+          description: Thread ID to continue conversation
+          example: 123e4567-e89b-12d3-a456-426614174000
+
+    ChatResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [ai.response]
+          example: ai.response
+        output:
+          type: object
+          properties:
+            type:
+              type: string
+              example: message
+            content:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: output_text
+                  text:
+                    type: string
+                    example: The capital of France is Paris.
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: Convenience shortcut (use output.content[] for AI agents)
+          example: The capital of France is Paris.
+        model:
+          type: object
+          properties:
+            name:
+              type: string
+              example: llama-3.1-70b-versatile
+            displayName:
+              type: string
+              example: Llama 3.1 70B
+            provider:
+              type: string
+              example: groq
+        prompt:
+          type: string
+          example: What is the capital of France?
+        selectionMode:
+          type: string
+          example: random
+        responseTimeMs:
+          type: integer
+          example: 1234
+        usage:
+          type: object
+          properties:
+            promptTokens:
+              type: integer
+              example: 10
+            completionTokens:
+              type: integer
+              example: 8
+            totalTokens:
+              type: integer
+              example: 18
+        timestamp:
+          type: string
+          format: date-time
+          example: 2024-01-03T10:00:00Z
+
+    DualChatResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        agent1:
+          $ref: '#/components/schemas/ChatResponse'
+        agent2:
+          $ref: '#/components/schemas/ChatResponse'
+        comparisonId:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        arena:
+          type: object
+          properties:
+            comparison:
+              type: object
+              properties:
+                winnerByLength:
+                  type: string
+                  enum: [agent1, agent2, tie]
+                  example: agent1
+                winnerByTokens:
+                  type: string
+                  enum: [agent1, agent2, tie]
+                  example: agent1
+                verdict:
+                  type: string
+                  example: Agent 1 produced the longer, more token-heavy answer.
+                userWinner:
+                  type: string
+                  nullable: true
+                  example: null
+                agent1MessageLength:
+                  type: integer
+                  example: 150
+                agent2MessageLength:
+                  type: integer
+                  example: 120
+                agent1Tokens:
+                  type: integer
+                  example: 45
+                agent2Tokens:
+                  type: integer
+                  example: 38
+            models:
+              type: object
+              properties:
+                agent1:
+                  type: string
+                  example: llama-3.1-70b-versatile
+                agent2:
+                  type: string
+                  example: mixtral-8x7b-32768
+        timestamp:
+          type: string
+          format: date-time
+        totalResponseTimeMs:
+          type: integer
+          example: 2500
+
+    # Model schemas
+    AIModel:
+      type: object
+      properties:
+        model_id:
+          type: string
+          format: uuid
+        model_name:
+          type: string
+          example: llama-3.1-70b-versatile
+        display_name:
+          type: string
+          example: Llama 3.1 70B
+        provider:
+          type: string
+          example: groq
+        is_active:
+          type: boolean
+          example: true
+        context_length:
+          type: integer
+          example: 32768
+        elo_rating:
+          type: integer
+          example: 1200
+        total_votes:
+          type: integer
+          example: 150
+        win_rate:
+          type: number
+          format: float
+          example: 0.65
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Vote schemas
+    VoteRequest:
+      type: object
+      required:
+        - comparisonId
+        - winner
+      properties:
+        comparisonId:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        winner:
+          type: string
+          enum: [agent1, agent2, tie]
+          example: agent1
+
+    # Thread schemas
+    Thread:
+      type: object
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Discussion about AI
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Admin schemas
+    DashboardStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+          example: 1250
+        totalThreads:
+          type: integer
+          example: 5432
+        totalComparisons:
+          type: integer
+          example: 12345
+        totalVotes:
+          type: integer
+          example: 8765
+        activeModels:
+          type: integer
+          example: 15
+        timestamp:
+          type: string
+          format: date-time
+
+paths:
+  # Health endpoints
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the API is running (no auth required)
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  message:
+                    type: string
+                    example: DualMind API is running
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: 1.0.0
+
+  /api/ping:
+    get:
+      tags:
+        - Health
+      summary: Ping endpoint
+      description: Ping the API (no auth required)
+      security: []
+      responses:
+        '200':
+          description: Pong
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: DualMind API is running
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: 1.0.0
+                  endpoints:
+                    type: object
+                    properties:
+                      models:
+                        type: string
+                        example: GET /api/models (requires auth)
+                      arena:
+                        type: string
+                        example: POST /api/arena/chat (requires auth)
+                      ping:
+                        type: string
+                        example: GET /api/ping (no auth required)
+                      health:
+                        type: string
+                        example: GET /api/ping/health (no auth required)
+
+  /api/ping/health:
+    get:
+      tags:
+        - Health
+      summary: Health check (alt endpoint)
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+
+  # Arena endpoints
+  /api/arena/test:
+    get:
+      tags:
+        - Arena
+      summary: Test arena endpoint
+      description: Test if arena endpoints are accessible
+      responses:
+        '200':
+          description: Arena API is accessible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: API running
+                  timestamp:
+                    type: string
+                    format: date-time
+                  endpoints:
+                    type: object
+
+  /api/arena/ping:
+    get:
+      tags:
+        - Arena
+      summary: Ping arena endpoint
+      security: []
+      responses:
+        '200':
+          description: Arena is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+
+  /api/arena/chat:
+    post:
+      tags:
+        - Arena
+      summary: Single model chat
+      description: Send a message to a single AI model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/arena/dualchat:
+    post:
+      tags:
+        - Arena
+      summary: Dual model comparison
+      description: |
+        Send a message to two AI models simultaneously for comparison.
+        
+        **Selection Modes:**
+        - `random`: Two random models
+        - `topper`: Top-rated model vs random model
+        - `manual`: Specify both models (requires model1 and model2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              random:
+                summary: Random model selection
+                value:
+                  prompt: What is machine learning?
+                  selectionMode: random
+              manual:
+                summary: Manual model selection
+                value:
+                  prompt: What is machine learning?
+                  model1: llama-3.1-70b-versatile
+                  model2: mixtral-8x7b-32768
+      responses:
+        '200':
+          description: Successful dual chat response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DualChatResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/arena/chat/stream:
+    post:
+      tags:
+        - Arena
+      summary: Streaming chat
+      description: |
+        Send a message and receive streaming response via Server-Sent Events (SSE).
+        
+        **Important:** Use `fetch()` with `ReadableStream`, NOT `EventSource`.
+        
+        **Event Types:**
+        - `ai.stream.delta`: Content chunk
+        - `ai.stream.done`: Stream complete
+        - `ai.error`: Error occurred
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  data: {"object":"ai.stream.delta","delta":{"type":"output_text","text":"Hello "}}
+                  
+                  data: {"object":"ai.stream.delta","delta":{"type":"output_text","text":"world!"}}
+                  
+                  data: {"object":"ai.stream.done","finish_reason":"stop"}
+        '400':
+          description: Bad request
+
+  # Model endpoints
+  /api/models:
+    get:
+      tags:
+        - Models
+      summary: List all AI models
+      description: Get list of all available AI models with their statistics
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AIModel'
+        '401':
+          description: Unauthorized
+
+  # Vote endpoints
+  /api/votes/model-vote:
+    post:
+      tags:
+        - Votes
+      summary: Submit a vote
+      description: Vote for the winner of a model comparison
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+      responses:
+        '200':
+          description: Vote submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Vote submitted successfully
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+
+  /api/votes/model-stats:
+    get:
+      tags:
+        - Votes
+      summary: Get model statistics
+      description: Get voting statistics and leaderboard
+      responses:
+        '200':
+          description: Model statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model_name:
+                          type: string
+                        elo_rating:
+                          type: integer
+                        total_votes:
+                          type: integer
+                        win_rate:
+                          type: number
+
+  # Thread endpoints
+  /api/threads:
+    get:
+      tags:
+        - Threads
+      summary: Get user threads
+      description: Get all threads for the authenticated user
+      responses:
+        '200':
+          description: List of threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Thread'
+
+    post:
+      tags:
+        - Threads
+      summary: Create a thread
+      description: Create a new conversation thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  example: My Conversation
+      responses:
+        '200':
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  thread:
+                    $ref: '#/components/schemas/Thread'
+
+  /api/threads/{id}:
+    get:
+      tags:
+        - Threads
+      summary: Get thread by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  thread:
+                    $ref: '#/components/schemas/Thread'
+
+    put:
+      tags:
+        - Threads
+      summary: Update thread
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+      responses:
+        '200':
+          description: Thread updated
+
+    delete:
+      tags:
+        - Threads
+      summary: Delete thread
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread deleted
+
+  # Speech endpoints
+  /api/speech/synthesize:
+    post:
+      tags:
+        - Speech
+      summary: Text-to-speech synthesis
+      description: Convert text to speech audio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  example: Hello, how are you?
+                voice:
+                  type: string
+                  example: Celeste-PlayAI
+      responses:
+        '200':
+          description: Audio file
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+
+  # Admin Dashboard endpoints
+  /api/admin/dashboard/stats:
+    get:
+      tags:
+        - Admin - Dashboard
+      summary: Get dashboard statistics
+      description: Get overall platform statistics (admin only)
+      responses:
+        '200':
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStats'
+
+  /api/admin/dashboard/recent-activity:
+    get:
+      tags:
+        - Admin - Dashboard
+      summary: Get recent activity
+      description: Get recent platform activity (admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Recent activity list
+
+  /api/admin/dashboard/model-performance:
+    get:
+      tags:
+        - Admin - Dashboard
+      summary: Get model performance metrics
+      responses:
+        '200':
+          description: Model performance data
+
+  /api/admin/dashboard/user-stats:
+    get:
+      tags:
+        - Admin - Dashboard
+      summary: Get user statistics
+      responses:
+        '200':
+          description: User statistics
+
+  /api/admin/dashboard/provider-stats:
+    get:
+      tags:
+        - Admin - Dashboard
+      summary: Get provider statistics
+      responses:
+        '200':
+          description: Provider statistics
+
+  # Admin User endpoints
+  /api/admin/users:
+    get:
+      tags:
+        - Admin - Users
+      summary: List all users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        '200':
+          description: List of users
+
+    post:
+      tags:
+        - Admin - Users
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+      responses:
+        '200':
+          description: User created
+
+  /api/admin/users/{id}:
+    get:
+      tags:
+        - Admin - Users
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User details
+
+    put:
+      tags:
+        - Admin - Users
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: User updated
+
+    delete:
+      tags:
+        - Admin - Users
+      summary: Delete user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User deleted
+
+  /api/admin/users/search:
+    get:
+      tags:
+        - Admin - Users
+      summary: Search users
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Search results
+
+  # Admin Providers endpoints
+  /api/admin/providers:
+    get:
+      tags:
+        - Admin - Providers
+      summary: List all providers
+      responses:
+        '200':
+          description: List of AI providers
+
+    post:
+      tags:
+        - Admin - Providers
+      summary: Create provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - providerName
+              properties:
+                providerName:
+                  type: string
+                  example: groq
+                isEnabled:
+                  type: boolean
+                priority:
+                  type: integer
+      responses:
+        '200':
+          description: Provider created
+
+  /api/admin/providers/{name}:
+    put:
+      tags:
+        - Admin - Providers
+      summary: Update provider
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Provider updated
+
+  /api/admin/providers/{name}/keys:
+    get:
+      tags:
+        - Admin - Providers
+      summary: Get provider API keys
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of API keys
+
+    post:
+      tags:
+        - Admin - Providers
+      summary: Add provider API key
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - apiKey
+              properties:
+                apiKey:
+                  type: string
+                keyName:
+                  type: string
+      responses:
+        '200':
+          description: API key added
+
+  /api/admin/keys/{id}/status:
+    put:
+      tags:
+        - Admin - Providers
+      summary: Update API key status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - isActive
+              properties:
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: Key status updated
+
+  /api/admin/keys/{id}:
+    delete:
+      tags:
+        - Admin - Providers
+      summary: Delete API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Key deleted
+
+  # Additional admin endpoints follow similar patterns for:
+  # - /api/admin/threads
+  # - /api/admin/thread-messages
+  # - /api/admin/comparisons
+  # - /api/admin/model-votes
+  # - /api/admin/ai-models
+  # (Full specification available in complete documentation)
+
