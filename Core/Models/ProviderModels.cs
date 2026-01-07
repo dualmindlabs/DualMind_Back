@@ -64,8 +64,8 @@ namespace DualMind_Back.Core.Models
         [JsonProperty("provider_name")]
         public string ProviderName { get; set; }
 
-        [JsonProperty("api_key")]
-        public string ApiKey { get; set; }
+        [JsonProperty("encrypted_api_key")]
+        public string EncryptedApiKey { get; set; }
 
         [JsonProperty("display_mask")]
         public string DisplayMask { get; set; }

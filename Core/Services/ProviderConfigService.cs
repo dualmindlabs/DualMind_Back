@@ -128,14 +128,14 @@ namespace DualMind_Back.Core.Services
             // 3. Pick one (Least Recently Used)
             var selectedKey = candidates.OrderBy(k => k.LastUsedAt ?? DateTime.MinValue).First();
 
-            // 4. Return plain API key
-            selectedKey.LastUsedAt = DateTime.UtcNow; 
+            // 4. Return the API key (stored plain, no decryption needed)
+            selectedKey.LastUsedAt = DateTime.UtcNow;
             
             return new DecryptedProviderKey 
             { 
                 KeyId = selectedKey.KeyId, 
                 ProviderName = providerName, 
-                Ticket = selectedKey.ApiKey
+                Ticket = selectedKey.EncryptedApiKey // Plain key from DB
             };
         }
 

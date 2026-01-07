@@ -16,14 +16,8 @@ namespace DualMind_Back.Core.Services
 
         public EncryptionService()
         {
-            EnvConfig.Load();
-            var secret = EnvConfig.AppSecret;
-            
-            if (string.IsNullOrWhiteSpace(secret))
-            {
-                // Use a default key if APP_SECRET is missing
-                secret = "DefaultDualMindEncryptionKey2024!@#$%^&*()";
-            }
+            // Always use the same default key - no APP_SECRET dependency
+            var secret = "DefaultDualMindEncryptionKey2024!@#$%^&*()";
 
             // Ensure key is exactly 32 bytes
             using (var sha = SHA256.Create())

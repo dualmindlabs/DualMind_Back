@@ -138,14 +138,5 @@ namespace DualMind_Back.Infrastructure.Configuration
         public static string GroqApiKey => Get("GROQ_API_KEY");
         public static string BytezApiKey => Get("BYTEZ_API_KEY");
         public static string JwtSecret => Get("JWT_SECRET");
-        public static string AppSecret
-        {
-            get
-            {
-                var val = Get("APP_SECRET");
-                if (string.IsNullOrEmpty(val)) Console.WriteLine("ERROR: APP_SECRET not found in environment variables.");
-                return val;
-            }
-        }
     }
 }

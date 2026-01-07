@@ -183,6 +183,8 @@ namespace DualMind_Back.Controllers.Admin
             try
             {
                 var rawKey = request.ApiKey.Trim();
+                
+                // Store plain key (no encryption per user request)
                 var mask = rawKey.Length > 4 
                     ? "..." + rawKey.Substring(rawKey.Length - 4) 
                     : "..." + rawKey;
@@ -191,7 +193,7 @@ namespace DualMind_Back.Controllers.Admin
                 {
                     KeyId = Guid.NewGuid(),
                     ProviderName = name,
-                    ApiKey = rawKey,
+                    EncryptedApiKey = rawKey, // Plain key stored in this column
                     DisplayMask = mask,
                     IsActive = request.IsActive,
                     CreatedAt = DateTime.UtcNow,
@@ -202,7 +204,7 @@ namespace DualMind_Back.Controllers.Admin
                 {
                     key_id = newKey.KeyId,
                     provider_name = newKey.ProviderName,
-                    api_key = newKey.ApiKey,
+                    encrypted_api_key = rawKey, // Plain key
                     display_mask = newKey.DisplayMask,
                     is_active = newKey.IsActive,
                     created_at = newKey.CreatedAt,
