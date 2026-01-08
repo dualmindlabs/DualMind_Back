@@ -37,6 +37,11 @@ jobs:
       - name: Publish to folder
         run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\\published\\"
 
+      - name: Copy site content to publish folder
+        run: |
+          robocopy "${{ github.workspace }}" "${{ github.workspace }}\published" /E /XD .git .github .vs .vscode obj packages published /XF *.user *.suo *.psess *.vsp *.vsmdi *.cache *.log
+          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
+
       - name: Verify published files
         run: |
           if (!(Test-Path "${{ github.workspace }}\published")) {
