@@ -27,14 +27,35 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore
 
+      - name: Prepare publish folder
+        run: |
+          if (Test-Path "${{ github.workspace }}\published") {
+            Remove-Item -Recurse -Force "${{ github.workspace }}\published"
+          }
+          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\published" | Out-Null
+
       - name: Publish to folder
-        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\\published"
+        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\\published\\"
+
+      - name: Verify published files
+        run: |
+          if (!(Test-Path "${{ github.workspace }}\published")) {
+            Write-Error "Published folder does not exist"
+            exit 1
+          }
+          $files = Get-ChildItem -Path "${{ github.workspace }}\published" -Recurse -File -ErrorAction SilentlyContinue
+          if (!$files -or $files.Count -eq 0) {
+            Write-Error "Published folder is empty"
+            exit 1
+          }
+          Write-Host "Published file count: $($files.Count)"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: ASP-app
-          path: 'published/**'
+          path: '${{ github.workspace }}\\published\\**'
+          if-no-files-found: error
 
   deploy:
     runs-on: windows-latest
