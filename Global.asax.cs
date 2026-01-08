@@ -32,6 +32,9 @@ namespace DualMind_Back
             var allowedOrigins = new[] { 
                 "https://arena.dualmindlab.tech",
                 "https://www.arena.dualmindlab.tech",
+                "https://admin.dualmindlab.tech",
+                "https://dualmindlab.tech",
+                "https://www.dualmindlab.tech",
                 "http://localhost:3000",
                 "http://localhost:5173",
                 "http://localhost:8000",
@@ -74,8 +77,8 @@ namespace DualMind_Back
                 return;
             }
 
-            // Handle health endpoint directly (with CORS headers already set)
-            if (ctx.Request.Path == "/health" && ctx.Request.HttpMethod == "GET")
+            // Handle health endpoints directly (with CORS headers already set)
+            if ((ctx.Request.Path == "/health" || ctx.Request.Path == "/api/health") && ctx.Request.HttpMethod == "GET")
             {
                 ctx.Response.ContentType = "application/json";
                 ctx.Response.StatusCode = 200;

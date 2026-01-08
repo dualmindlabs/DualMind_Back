@@ -20,5 +20,20 @@ namespace DualMind_Back.Controllers
                 version = "1.0.0"
             });
         }
+
+        // Alias for /api/health (frontend expects this)
+        [HttpGet]
+        [Route("api/health")]
+        [AllowAnonymous]
+        public IHttpActionResult ApiHealth()
+        {
+            return Ok(new
+            {
+                status = "healthy",
+                message = "DualMind API is running",
+                timestamp = DateTime.UtcNow,
+                version = "1.0.0"
+            });
+        }
     }
 }
