@@ -28,7 +28,7 @@ jobs:
         run: nuget restore
 
       - name: Publish to folder
-        run: msbuild /nologo /verbosity:m /t:Build /t:pipelinePreDeployCopyAllFilesToOneFolder /p:_PackageTempDir="\published\"
+        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="\published\"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
