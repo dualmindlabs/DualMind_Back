@@ -18,13 +18,13 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore NuGet
-        run: nuget restore DualMind_Back.sln
+        run: nuget restore DualMind_Back.csproj
 
       - name: Build
-        run: msbuild DualMind_Back.sln /p:Configuration=Release
+        run: msbuild DualMind_Back.csproj /p:Configuration=Release
 
       - name: Publish
-        run: msbuild DualMind_Back/DualMind_Back.csproj /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\published"
+        run: msbuild DualMind_Back.csproj /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\published"
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
