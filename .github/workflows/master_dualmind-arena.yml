@@ -28,7 +28,7 @@ jobs:
         run: nuget restore
 
       - name: Publish to folder
-        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="published"
+        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\\published"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -48,7 +48,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ASP-app
-      
+          path: ./published
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
