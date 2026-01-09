@@ -1,0 +1,15 @@
+version: '3.4'
+
+services:
+  dualmind-api:
+    image: ${DOCKER_REGISTRY-}dualmind-api
+    build:
+      context: src
+      dockerfile: DualMind.API/Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
