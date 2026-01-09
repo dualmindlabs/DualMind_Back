@@ -50,6 +50,7 @@ namespace DualMind_Back.Controllers.Api
 
         [HttpPost]
         [Route("chat")]
+        [AllowAnonymous]
         public async Task<IHttpActionResult> Chat([FromBody] ChatRequest request)
         {
             var startTime = DateTime.UtcNow;
@@ -144,6 +145,7 @@ namespace DualMind_Back.Controllers.Api
 
         [HttpPost]
         [Route("dualchat")]
+        [AllowAnonymous]
         public async Task<IHttpActionResult> DualChat([FromBody] ChatRequest request)
         {
             try
@@ -394,6 +396,7 @@ namespace DualMind_Back.Controllers.Api
 
         [HttpPost]
         [Route("chat/stream")]
+        [AllowAnonymous]
         public HttpResponseMessage StreamChat(ChatRequest request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Prompt))
