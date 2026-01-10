@@ -126,3 +126,5 @@ yarn-error.log
 
 # Verification Demo
 verification_demo/node_modules/
+out/
+src/DualMind.API/out/
