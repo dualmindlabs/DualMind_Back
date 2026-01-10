@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -15,6 +16,7 @@ namespace DualMind.API.Core.Services
         Timeout,        // 408, 504
         Server          // 5xx
     }
+
 
     public class ProviderErrorClassifier
     {

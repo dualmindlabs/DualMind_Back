@@ -1,5 +1,10 @@
+using System.ComponentModel.DataAnnotations;
 using System;
 using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.Collections.Generic;
 
 namespace DualMind.API.AI.Contracts
@@ -11,7 +16,7 @@ namespace DualMind.API.AI.Contracts
         public bool Success { get; set; }
         public string Message { get; set; }
         public ModelInfo Model { get; set; }
-        public string Prompt { get; set; }
+        [Required] public string Prompt { get; set; }
         public string SelectionMode { get; set; }
         public long ResponseTimeMs { get; set; }
         public UsageInfo Usage { get; set; }

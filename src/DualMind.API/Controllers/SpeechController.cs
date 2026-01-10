@@ -6,6 +6,7 @@ using DualMind.API.AI.Providers;
 namespace DualMind.API.Controllers
 {
     [Route("api/speech")]
+    [ApiController]
     public class SpeechController : ControllerBase
     {
         private readonly GroqService _groqService;
@@ -46,6 +47,7 @@ namespace DualMind.API.Controllers
         }
     }
 
+    [ApiController]
     public class SpeechRequest
     {
         public string Text { get; set; }

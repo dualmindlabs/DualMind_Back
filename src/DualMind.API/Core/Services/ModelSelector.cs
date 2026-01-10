@@ -102,6 +102,7 @@ namespace DualMind.API.Core.Services
         }
     }
 
+
     public class ModelDefinition
     {
         public string Id { get; set; }

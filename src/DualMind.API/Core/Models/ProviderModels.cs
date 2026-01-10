@@ -1,9 +1,15 @@
+using System.ComponentModel.DataAnnotations;
 using System;
 using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.Collections.Generic;
 
 namespace DualMind.API.Core.Models
 {
+
     public class Provider
     {
         [JsonProperty("provider_name")]
@@ -29,6 +35,7 @@ namespace DualMind.API.Core.Models
         public int? KeyCount { get; set; }
     }
 
+
     public class ProviderCreateRequest
     {
         [JsonProperty("provider_name")]
@@ -44,6 +51,7 @@ namespace DualMind.API.Core.Models
         public int Priority { get; set; } = 0;
     }
 
+
     public class ProviderUpdateRequest
     {
         [JsonProperty("display_name")]
@@ -55,6 +63,7 @@ namespace DualMind.API.Core.Models
         [JsonProperty("priority")]
         public int Priority { get; set; }
     }
+
 
     public class ProviderApiKey
     {
@@ -101,6 +110,7 @@ namespace DualMind.API.Core.Models
         public Guid? CreatedBy { get; set; }
     }
 
+
     public class ProviderApiKeyCreateRequest
     {
         [JsonProperty("api_key")]
@@ -109,6 +119,7 @@ namespace DualMind.API.Core.Models
         [JsonProperty("is_active")]
         public bool IsActive { get; set; } = true;
     }
+
 
     public class ProviderApiKeyStatusUpdate
     {

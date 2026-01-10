@@ -1,13 +1,16 @@
+using System.ComponentModel.DataAnnotations;
 using System;
 
 namespace DualMind.API.Core.Models
 {
+
     public class VoteRequest
     {
         public Guid ComparisonId { get; set; }
         public string WinnerModelName { get; set; }
         public Guid? UserId { get; set; }
     }
+
 
     public class ModelStatsDto
     {

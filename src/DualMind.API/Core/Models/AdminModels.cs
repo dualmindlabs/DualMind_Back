@@ -1,9 +1,15 @@
+using System.ComponentModel.DataAnnotations;
 using System;
 using Newtonsoft.Json;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace DualMind.API.Core.Models
 {
     // User Models
+
     public class User
     {
         [JsonProperty("user_id")]
@@ -25,6 +31,7 @@ namespace DualMind.API.Core.Models
         public DateTime? LastLoginAt { get; set; }
     }
 
+
     public class UserCreateRequest
     {
         [JsonProperty("full_name")]
@@ -36,6 +43,7 @@ namespace DualMind.API.Core.Models
         [JsonProperty("role")]
         public string Role { get; set; } = "user";
     }
+
 
     public class UserUpdateRequest
     {
@@ -53,6 +61,7 @@ namespace DualMind.API.Core.Models
     }
 
     // AI Model Models
+
     public class AIModel
     {
         [JsonProperty("model_id")]
@@ -83,6 +92,7 @@ namespace DualMind.API.Core.Models
         public DateTime? UpdatedAt { get; set; }
     }
 
+
     public class AIModelCreateRequest
     {
         [JsonProperty("model_name")]
@@ -103,6 +113,7 @@ namespace DualMind.API.Core.Models
         [JsonProperty("created_by")]
         public Guid? CreatedBy { get; set; }
     }
+
 
     public class AIModelUpdateRequest
     {
@@ -126,6 +137,7 @@ namespace DualMind.API.Core.Models
     }
 
     // Comparison Models
+
     public class Comparison
     {
         [JsonProperty("comparison_id")]
@@ -135,7 +147,7 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        [Required] public string PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }
@@ -160,6 +172,7 @@ namespace DualMind.API.Core.Models
     }
 
     // Model Vote Models
+
     public class ModelVote
     {
         [JsonProperty("vote_id")]
@@ -178,6 +191,7 @@ namespace DualMind.API.Core.Models
         public DateTime? CreatedAt { get; set; }
     }
 
+
     public class ModelVoteCreateRequest
     {
         [JsonProperty("user_id")]
@@ -191,6 +205,7 @@ namespace DualMind.API.Core.Models
     }
 
     // Thread Models
+
     public class ChatThread
     {
         [JsonProperty("thread_id")]
@@ -200,11 +215,12 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("title")]
-        public string Title { get; set; }
+        [Required] public string Title { get; set; }
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
     }
+
 
     public class ThreadCreateRequest
     {
@@ -212,16 +228,18 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("title")]
-        public string Title { get; set; }
+        [Required] public string Title { get; set; }
     }
+
 
     public class ThreadUpdateRequest
     {
         [JsonProperty("title")]
-        public string Title { get; set; }
+        [Required] public string Title { get; set; }
     }
 
     // Thread Message Models
+
     public class ThreadMessage
     {
         [JsonProperty("message_id")]
@@ -231,7 +249,7 @@ namespace DualMind.API.Core.Models
         public Guid? ThreadId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        [Required] public string PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }
@@ -255,13 +273,14 @@ namespace DualMind.API.Core.Models
         public DateTime? CreatedAt { get; set; }
     }
 
+
     public class ThreadMessageCreateRequest
     {
         [JsonProperty("thread_id")]
         public Guid ThreadId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        [Required] public string PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }

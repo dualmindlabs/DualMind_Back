@@ -1,5 +1,7 @@
 using System;
 using DualMind.API.Infrastructure.Configuration;
+using DualMind.API.Infrastructure.Logging;
+using DualMind.API.Infrastructure.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,8 +12,18 @@ var builder = WebApplication.CreateBuilder(args);
 // Load .env
 EnvConfig.Load();
 
+// Configure Serilog
+builder.ConfigureSerilog();
+
+// Configure Auth
+builder.Services.ConfigureAuthentication();
+
 // Add services to the container.
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        // Add global filter to populate HttpContext.Items["UserId"] from Claims
+        options.Filters.Add<ClaimsTransformationFilter>();
+    })
     .AddNewtonsoftJson(options =>
     {
         options.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver();
@@ -87,12 +99,10 @@ app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-// Removed /health mapping to avoid conflict with HealthController
-// app.MapGet("/health", ...);
 
 app.Run();
 

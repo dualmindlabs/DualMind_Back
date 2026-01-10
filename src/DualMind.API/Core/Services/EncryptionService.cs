@@ -10,6 +10,7 @@ namespace DualMind.API.Core.Services
     /// Simple AES-256 encryption for storing API keys.
     /// Uses APP_SECRET from env as the key, or a default key if missing.
     /// </summary>
+
     public class EncryptionService
     {
         private readonly byte[] _key;

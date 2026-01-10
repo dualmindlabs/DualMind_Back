@@ -9,7 +9,8 @@ using DualMind.API.Core.Services;
 namespace DualMind.API.Controllers
 {
     [Route("api/threads")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
+    [ApiController]
     public class ThreadsController : ControllerBase
     {
         [HttpGet]
@@ -97,7 +98,7 @@ namespace DualMind.API.Controllers
         {
             try
             {
-                var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                string token = null;
                 var messages = await ThreadMessagesService.GetThreadMessagesAsync(threadId, token);
 
                 return Ok(new { items = messages });

@@ -9,13 +9,15 @@ using DualMind.API.AI.Contracts;
 using DualMind.API.AI.Gateway;
 using Newtonsoft.Json;
 using System.Net.Http;
+using Microsoft.AspNetCore.Authorization;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 
 namespace DualMind.API.Controllers.Api
 {
     [Route("api/arena")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
+    [ApiController]
     public class ArenaController : ControllerBase
     {
         [HttpGet]
@@ -121,7 +123,7 @@ namespace DualMind.API.Controllers.Api
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
-                    var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                    string token = null;
                     // Note: request.ThreadId is string in ChatRequest, existing service might expect Guid or string. Assuming Guid for now based on previous code.
                     if (Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
                     {
@@ -192,7 +194,7 @@ namespace DualMind.API.Controllers.Api
                 {
                     if (string.Equals(request.SelectionMode, "topper", StringComparison.OrdinalIgnoreCase))
                     {
-                        var authToken = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                        string authToken = null; // No longer needed for model selection logic here
                         var pair = await LeaderboardModelSelector.GetTopperAndRandomModelAsync(authToken);
                         model1 = pair.model1;
                         model2 = pair.model2;
@@ -290,8 +292,14 @@ namespace DualMind.API.Controllers.Api
                 await MessageLogger.LogMessageAsync(sessionId, finalModel1, "agent1", request, response1);
                 await MessageLogger.LogMessageAsync(sessionId, finalModel2, "agent2", request, response2);
 
-                var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                await ComparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, token);
+                string token = null; // Removed insecure token passing
+                Guid? userId = null;
+                if (HttpContext.Items.TryGetValue("UserId", out var uidObj) && uidObj is Guid uid)
+                {
+                    userId = uid;
+                }
+
+                await ComparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, userId);
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
@@ -329,6 +337,8 @@ namespace DualMind.API.Controllers.Api
                 else
                     verdict = "Agents traded wins on length vs. tokens; review both answers manually.";
 
+                string userWinner = null;
+
                 var dualResponse = new
                 {
                     success = true,
@@ -342,7 +352,7 @@ namespace DualMind.API.Controllers.Api
                             winnerByLength,
                             winnerByTokens,
                             verdict,
-                            userWinner = (string)null,
+                            userWinner,
                             agent1MessageLength = msg1Len,
                             agent2MessageLength = msg2Len,
                             agent1Tokens = tokens1,

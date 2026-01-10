@@ -8,6 +8,7 @@ using DualMind.API.Infrastructure.Data;
 
 namespace DualMind.API.Core.Services
 {
+
     public class ProviderConfigService
     {
         private readonly AdminSupabaseClient _supabase;
@@ -213,7 +214,8 @@ namespace DualMind.API.Core.Services
         }
 
         // Helper class to pass around decrypted key + ID
-        public class DecryptedProviderKey
+
+    public class DecryptedProviderKey
         {
             public Guid KeyId { get; set; }
             public string ProviderName { get; set; }

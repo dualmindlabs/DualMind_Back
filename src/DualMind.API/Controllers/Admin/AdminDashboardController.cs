@@ -13,6 +13,8 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/dashboard")]
+    [ApiController]
+    [Authorize(Policy = "Admin")]
     public class AdminDashboardController : ControllerBase
     {
         private readonly AdminSupabaseClient _supabase;

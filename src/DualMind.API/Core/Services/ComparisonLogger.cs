@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DualMind.API.AI.Contracts;
 using DualMind.API.Infrastructure.Data;
-using DualMind.API.Infrastructure.Security;
 using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Core.Services
@@ -12,12 +11,10 @@ namespace DualMind.API.Core.Services
     {
         private static readonly SupabaseService _supabase = new SupabaseService();
 
-        public static async Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, string token)
+        public static async Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, Guid? userId)
         {
             try
             {
-                var userId = GetUserIdFromToken(token);
-
                 var model1Id = await GetOrCreateModelIdAsync(response1.Model.Name, response1.Model.DisplayName, response1.Model.Provider);
                 var model2Id = await GetOrCreateModelIdAsync(response2.Model.Name, response2.Model.DisplayName, response2.Model.Provider);
 
@@ -40,25 +37,6 @@ namespace DualMind.API.Core.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to log comparison: {ex.Message}");
             }
-        }
-
-        private static Guid? GetUserIdFromToken(string token)
-        {
-            if (string.IsNullOrEmpty(token)) return null;
-
-            try
-            {
-                var payload = JwtHelper.DecodePayload(token);
-                if (payload != null && payload.TryGetValue("sub", out object sub))
-                {
-                    Guid userId;
-                    if (Guid.TryParse(sub?.ToString(), out userId))
-                        return userId;
-                }
-            }
-            catch { }
-
-            return null;
         }
 
         private static async Task<Guid?> GetOrCreateModelIdAsync(string modelName, string displayName, string provider)

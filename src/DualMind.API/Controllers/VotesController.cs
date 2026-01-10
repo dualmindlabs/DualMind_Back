@@ -9,7 +9,8 @@ using DualMind.API.Core.Services;
 namespace DualMind.API.Controllers
 {
     [Route("api/arena")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
+    [ApiController]
     public class VotesController : ControllerBase
     {
         [HttpPost]

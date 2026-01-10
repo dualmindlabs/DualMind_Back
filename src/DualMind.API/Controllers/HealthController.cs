@@ -6,6 +6,7 @@ namespace DualMind.API.Controllers
 {
     // Health Controller for API health checks
     [Route("")]
+    [ApiController]
     public class HealthController : ControllerBase
     {
         [HttpGet]

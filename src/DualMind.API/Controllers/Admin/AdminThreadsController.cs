@@ -11,6 +11,8 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/threads")]
+    [ApiController]
+    [Authorize(Policy = "Admin")]
     public class AdminThreadsController : ControllerBase
     {
         private readonly AdminSupabaseClient _supabase;

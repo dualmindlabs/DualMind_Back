@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System;
 
 namespace DualMind.API.AI.Contracts
@@ -5,7 +6,7 @@ namespace DualMind.API.AI.Contracts
     public class ChatRequest
     {
         public string ThreadId { get; set; }
-        public string Prompt { get; set; }
+        [Required] public string Prompt { get; set; }
         public string System { get; set; }
         public string Model { get; set; }
         public string Model1 { get; set; }

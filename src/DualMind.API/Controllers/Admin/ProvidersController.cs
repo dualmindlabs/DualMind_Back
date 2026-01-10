@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Threading.Tasks;
@@ -16,6 +17,8 @@ using Newtonsoft.Json.Linq;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin")]
+    [ApiController]
+    [Authorize(Policy = "Admin")]
     public class ProvidersController : ControllerBase
     {
         private readonly AdminSupabaseClient _supabase;

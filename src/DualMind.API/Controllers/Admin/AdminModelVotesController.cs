@@ -11,6 +11,8 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/votes")]
+    [ApiController]
+    [Authorize(Policy = "Admin")]
     public class AdminModelVotesController : ControllerBase
     {
         private readonly AdminSupabaseClient _supabase;

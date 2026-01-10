@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 namespace DualMind.API.Controllers
 {
     [Route("api/ping")]
+    [ApiController]
     public class PingController : ControllerBase
     {
         [HttpGet]
