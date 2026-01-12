@@ -13,13 +13,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/threads")]
     public class AdminThreadsController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "threads";
         private const string ID_COLUMN = "thread_id";
 
-        public AdminThreadsController()
+        public AdminThreadsController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/threads - Get all threads

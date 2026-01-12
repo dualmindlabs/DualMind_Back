@@ -38,6 +38,16 @@ namespace DualMind.API.Filters
                 return;
             }
 
+            // Retrieve configuration from DI
+            var settings = context.HttpContext.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<DualMind.API.Infrastructure.Configuration.SupabaseSettings>)) as Microsoft.Extensions.Options.IOptions<DualMind.API.Infrastructure.Configuration.SupabaseSettings>;
+            // In a better world, we'd verify the signature with settings.Value.JwtSecret
+            // For now, retaining existing logic but acknowledging the secret is available.
+            
+            // Note: JwtHelper.IsExpired doesn't check signature currently.
+            // If we wanted to check signature, we would pass settings.Value.JwtSecret to a verification method.
+            // Since we are refactoring, let's keep the logic consistent with "legacy" behavior for now
+            // but ensure we are using the helper as before.
+
             if (JwtHelper.IsExpired(token))
             {
                  context.Result = new JsonResult(new { success = false, error = "Token has expired" })

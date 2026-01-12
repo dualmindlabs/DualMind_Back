@@ -12,6 +12,20 @@ namespace DualMind.API.Controllers
     [DualMind.API.Filters.SupabaseAuth]
     public class ThreadsController : ControllerBase
     {
+        private readonly IThreadsService _threadsService;
+        private readonly IThreadMessagesService _threadMessagesService;
+        private readonly IUserSyncService _userSyncService;
+
+        public ThreadsController(
+            IThreadsService threadsService, 
+            IThreadMessagesService threadMessagesService,
+            IUserSyncService userSyncService)
+        {
+            _threadsService = threadsService;
+            _threadMessagesService = threadMessagesService;
+            _userSyncService = userSyncService;
+        }
+
         [HttpGet]
         [Route("")]
         public async Task<IActionResult> GetThreads([FromQuery] int limit = 20, [FromQuery] Guid? userId = null)
@@ -23,7 +37,7 @@ namespace DualMind.API.Controllers
                     userId = (Guid)HttpContext.Items["UserId"];
                 }
 
-                var threads = await ThreadsService.GetThreadsAsync(userId, limit);
+                var threads = await _threadsService.GetThreadsAsync(userId, limit);
 
                 return Ok(new { items = threads });
             }
@@ -50,7 +64,20 @@ namespace DualMind.API.Controllers
                     userId = (Guid)HttpContext.Items["UserId"];
                 }
 
-                var thread = await ThreadsService.CreateThreadAsync(request?.Title, userId);
+                // 🚨 BLOCKER FIX: Ensure public.users row exists before creating thread
+                if (userId.HasValue)
+                {
+                    var email = HttpContext.Items.ContainsKey("UserEmail") 
+                        ? HttpContext.Items["UserEmail"]?.ToString() 
+                        : null;
+                    var name = HttpContext.Items.ContainsKey("UserName") 
+                        ? HttpContext.Items["UserName"]?.ToString() 
+                        : null;
+                    
+                    await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
+                }
+
+                var thread = await _threadsService.CreateThreadAsync(request?.Title, userId);
 
                 return Ok(thread);
             }
@@ -71,7 +98,7 @@ namespace DualMind.API.Controllers
         {
             try
             {
-                var thread = await ThreadsService.GetThreadAsync(threadId);
+                var thread = await _threadsService.GetThreadAsync(threadId);
 
                 if (thread == null)
                 {
@@ -98,7 +125,7 @@ namespace DualMind.API.Controllers
             try
             {
                 var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var messages = await ThreadMessagesService.GetThreadMessagesAsync(threadId, token);
+                var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId, token);
 
                 return Ok(new { items = messages });
             }
@@ -112,5 +139,70 @@ namespace DualMind.API.Controllers
                 });
             }
         }
+
+        [HttpPatch]
+        [Route("{threadId:guid}")]
+        public async Task<IActionResult> UpdateThread(Guid threadId, [FromBody] UpdateThreadRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request?.Title))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "Title is required",
+                        code = "INVALID_REQUEST"
+                    });
+                }
+
+                await _threadsService.UpdateThreadAsync(threadId, request.Title);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Thread updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    code = "THREAD_UPDATE_ERROR"
+                });
+            }
+        }
+
+        [HttpDelete]
+        [Route("{threadId:guid}")]
+        public async Task<IActionResult> DeleteThread(Guid threadId)
+        {
+            try
+            {
+                await _threadsService.DeleteThreadAsync(threadId);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Thread deleted successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    code = "THREAD_DELETE_ERROR"
+                });
+            }
+        }
+    }
+
+    public class UpdateThreadRequest
+    {
+        public string Title { get; set; }
     }
 }

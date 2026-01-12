@@ -18,13 +18,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin")]
     public class ProvidersController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
-        private readonly ProviderConfigService _configService;
+        private readonly IAdminSupabaseClient _supabase;
+        private readonly IProviderConfigService _configService;
 
-        public ProvidersController()
+        public ProvidersController(IAdminSupabaseClient supabase, IProviderConfigService configService)
         {
-            _supabase = new AdminSupabaseClient();
-            _configService = new ProviderConfigService();
+            _supabase = supabase;
+            _configService = configService;
         }
 
         // --- PROVIDERS ---

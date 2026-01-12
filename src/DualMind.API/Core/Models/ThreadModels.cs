@@ -28,6 +28,8 @@ namespace DualMind.API.Core.Models
         public int? Model1TimeMs { get; set; }
         public int? Model2TimeMs { get; set; }
         public string WinnerModelName { get; set; }
+        public Guid? ComparisonId { get; set; }
+        public string VoteChoice { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

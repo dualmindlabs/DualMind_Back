@@ -12,5 +12,6 @@ namespace DualMind.API.AI.Contracts
         public string Model2 { get; set; }
         public string SelectionMode { get; set; }
         public int? MaxTokens { get; set; }
+        public double? Temperature { get; set; }
     }
 }

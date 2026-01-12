@@ -4,12 +4,18 @@ using DualMind.API.AI.Providers;
 
 namespace DualMind.API.AI.Gateway
 {
-    public static class ChatProviderFactory
+    public class ChatProviderFactory : IChatProviderFactory
     {
-        private static readonly GroqService _groqService = new GroqService();
-        private static readonly BytezService _bytezService = new BytezService();
+        private readonly GroqService _groqService;
+        private readonly BytezService _bytezService;
 
-        public static IChatProvider GetProvider(string providerName)
+        public ChatProviderFactory(GroqService groqService, BytezService bytezService)
+        {
+            _groqService = groqService;
+            _bytezService = bytezService;
+        }
+
+        public IChatProvider GetProvider(string providerName)
         {
             if (string.IsNullOrWhiteSpace(providerName))
                 return _groqService; // Default to Groq
@@ -30,7 +36,7 @@ namespace DualMind.API.AI.Gateway
             }
         }
 
-        public static IChatProvider GetGroqProvider()
+        public IChatProvider GetGroqProvider()
         {
             return _groqService;
         }

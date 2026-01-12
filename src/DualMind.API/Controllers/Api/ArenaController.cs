@@ -18,6 +18,32 @@ namespace DualMind.API.Controllers.Api
     [DualMind.API.Filters.SupabaseAuth]
     public class ArenaController : ControllerBase
     {
+        private readonly IModelSelector _modelSelector;
+        private readonly IChatProviderFactory _chatProviderFactory;
+        private readonly IMessageLogger _messageLogger;
+        private readonly IThreadMessagesService _threadMessagesService;
+        private readonly ILeaderboardModelSelector _leaderboardModelSelector;
+        private readonly IComparisonLogger _comparisonLogger;
+        private readonly IUserSyncService _userSyncService;
+
+        public ArenaController(
+            IModelSelector modelSelector,
+            IChatProviderFactory chatProviderFactory,
+            IMessageLogger messageLogger,
+            IThreadMessagesService threadMessagesService,
+            ILeaderboardModelSelector leaderboardModelSelector,
+            IComparisonLogger comparisonLogger,
+            IUserSyncService userSyncService)
+        {
+            _modelSelector = modelSelector;
+            _chatProviderFactory = chatProviderFactory;
+            _messageLogger = messageLogger;
+            _threadMessagesService = threadMessagesService;
+            _leaderboardModelSelector = leaderboardModelSelector;
+            _comparisonLogger = comparisonLogger;
+            _userSyncService = userSyncService;
+        }
+
         [HttpGet]
         [Route("test")]
         public IActionResult Test()
@@ -70,7 +96,7 @@ namespace DualMind.API.Controllers.Api
             try
             {
                 var selectedModel = string.IsNullOrWhiteSpace(request.Model) || request.Model == "auto"
-                    ? await ModelSelector.GetRandomModelAsync()
+                    ? await _modelSelector.GetRandomModelAsync()
                     : request.Model;
 
                 var selectionMode = string.IsNullOrWhiteSpace(request.Model) || request.Model == "auto"
@@ -78,13 +104,13 @@ namespace DualMind.API.Controllers.Api
                     : "manual";
 
                 // Execute with provider factory and fallback
-                var executionResult = await ExecuteWithFallbackAsync(selectedModel, request.Prompt, request.System, request.MaxTokens);
+                var executionResult = await ExecuteWithFallbackAsync(selectedModel, request.Prompt, request.System, request.MaxTokens, request.Temperature);
                 var rawResponse = executionResult.Response;
                 var finalModel = executionResult.UsedModel;
 
                 var responseTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
 
-                var modelInfo = ModelSelector.GetModelInfo(finalModel);
+                var modelInfo = _modelSelector.GetModelInfo(finalModel);
                 var contentText = rawResponse.Message;
                 var response = new ChatResponse
                 {
@@ -117,7 +143,7 @@ namespace DualMind.API.Controllers.Api
                     Timestamp = DateTime.UtcNow
                 };
 
-                await MessageLogger.LogMessageAsync(sessionId, finalModel, "single", request, response);
+                await _messageLogger.LogMessageAsync(sessionId, finalModel, "single", request, response);
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
@@ -125,7 +151,7 @@ namespace DualMind.API.Controllers.Api
                     // Note: request.ThreadId is string in ChatRequest, existing service might expect Guid or string. Assuming Guid for now based on previous code.
                     if (Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
                     {
-                        await ThreadMessagesService.LogSingleAsync(threadIdGuid, request.Prompt, finalModel, response, token);
+                        await _threadMessagesService.LogSingleAsync(threadIdGuid, request.Prompt, finalModel, response, token);
                     }
                 }
 
@@ -193,14 +219,14 @@ namespace DualMind.API.Controllers.Api
                     if (string.Equals(request.SelectionMode, "topper", StringComparison.OrdinalIgnoreCase))
                     {
                         var authToken = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                        var pair = await LeaderboardModelSelector.GetTopperAndRandomModelAsync(authToken);
+                        var pair = await _leaderboardModelSelector.GetTopperAndRandomModelAsync(authToken);
                         model1 = pair.model1;
                         model2 = pair.model2;
                         selectionMode = "topper";
                     }
                     else
                     {
-                        var pair = await ModelSelector.GetTwoRandomModelsAsync();
+                        var pair = await _modelSelector.GetTwoRandomModelsAsync();
                         model1 = pair.model1;
                         model2 = pair.model2;
                         selectionMode = "random";
@@ -208,8 +234,8 @@ namespace DualMind.API.Controllers.Api
                 }
 
                 // Execute parallel requests with fallback logic
-                var task1 = ExecuteWithFallbackAsync(model1, request.Prompt, request.System, request.MaxTokens);
-                var task2 = ExecuteWithFallbackAsync(model2, request.Prompt, request.System, request.MaxTokens);
+                var task1 = ExecuteWithFallbackAsync(model1, request.Prompt, request.System, request.MaxTokens, request.Temperature);
+                var task2 = ExecuteWithFallbackAsync(model2, request.Prompt, request.System, request.MaxTokens, request.Temperature);
 
                 await Task.WhenAll(task1, task2);
 
@@ -221,7 +247,7 @@ namespace DualMind.API.Controllers.Api
 
                 var responseTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
 
-                var modelInfo1 = ModelSelector.GetModelInfo(finalModel1);
+                var modelInfo1 = _modelSelector.GetModelInfo(finalModel1);
                 var contentText1 = result1.Response.Message;
                 var response1 = new ChatResponse
                 {
@@ -254,7 +280,7 @@ namespace DualMind.API.Controllers.Api
                     Timestamp = DateTime.UtcNow
                 };
 
-                var modelInfo2 = ModelSelector.GetModelInfo(finalModel2);
+                var modelInfo2 = _modelSelector.GetModelInfo(finalModel2);
                 var contentText2 = result2.Response.Message;
                 var response2 = new ChatResponse
                 {
@@ -287,17 +313,32 @@ namespace DualMind.API.Controllers.Api
                     Timestamp = DateTime.UtcNow
                 };
 
-                await MessageLogger.LogMessageAsync(sessionId, finalModel1, "agent1", request, response1);
-                await MessageLogger.LogMessageAsync(sessionId, finalModel2, "agent2", request, response2);
+                await _messageLogger.LogMessageAsync(sessionId, finalModel1, "agent1", request, response1);
+                await _messageLogger.LogMessageAsync(sessionId, finalModel2, "agent2", request, response2);
 
                 var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                await ComparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, token);
+                
+                // 🚨 Ensure public.users row exists before logging comparison
+                if (HttpContext.Items.ContainsKey("UserId"))
+                {
+                    var userId = (Guid)HttpContext.Items["UserId"];
+                    var email = HttpContext.Items.ContainsKey("UserEmail") 
+                        ? HttpContext.Items["UserEmail"]?.ToString() 
+                        : null;
+                    var name = HttpContext.Items.ContainsKey("UserName") 
+                        ? HttpContext.Items["UserName"]?.ToString() 
+                        : null;
+                    
+                    await _userSyncService.EnsureUserExistsAsync(userId, email, name);
+                }
+                
+                await _comparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, token);
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
                     if (Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
                     {
-                        await ThreadMessagesService.LogDualAsync(threadIdGuid, request.Prompt, finalModel1, finalModel2, response1, response2, token);
+                        await _threadMessagesService.LogDualAsync(threadIdGuid, request.Prompt, finalModel1, finalModel2, response1, response2, token, comparisonId);
                     }
                 }
 
@@ -416,21 +457,21 @@ namespace DualMind.API.Controllers.Api
             try
             {
                 var selectedModel = string.IsNullOrWhiteSpace(request.Model) || request.Model == "auto"
-                    ? await ModelSelector.GetRandomModelAsync()
+                    ? await _modelSelector.GetRandomModelAsync()
                     : request.Model;
 
-                var info = ModelSelector.GetModelInfo(selectedModel);
+                var info = _modelSelector.GetModelInfo(selectedModel);
                 var providerName = info?.Provider ?? "groq";
 
                 IChatProvider provider;
                 try
                 {
-                    provider = ChatProviderFactory.GetProvider(providerName);
+                    provider = _chatProviderFactory.GetProvider(providerName);
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Provider resolution failed: {ex.Message}, falling back to Groq");
-                    provider = ChatProviderFactory.GetGroqProvider();
+                    provider = _chatProviderFactory.GetGroqProvider();
                 }
 
                 Func<AIStreamEvent, Task> onEvent = async (e) =>
@@ -475,17 +516,31 @@ namespace DualMind.API.Controllers.Api
             }
         }
 
-        private async Task<(GroqResponse Response, string UsedModel)> ExecuteWithFallbackAsync(string model, string prompt, string system, int? maxTokens)
+        private async Task<(GroqResponse Response, string UsedModel)> ExecuteWithFallbackAsync(string model, string prompt, string system, int? maxTokens, double? temperature = null)
         {
-            var info = ModelSelector.GetModelInfo(model);
+            var info = _modelSelector.GetModelInfo(model);
             var providerName = info?.Provider ?? "groq";
 
             try
             {
                 // GetProvider now always returns a provider (falls back to Groq if not found)
-                var provider = ChatProviderFactory.GetProvider(providerName);
-                var response = await provider.ChatAsync(model, prompt, system, maxTokens);
-                return (response, model);
+                var provider = _chatProviderFactory.GetProvider(providerName);
+                
+                // Add Timeout of 45 seconds (increased from 20s to be safe for deep reasoning models if any)
+                // But "decades" implies infinite hang. 45s is reasonable.
+                var chatTask = provider.ChatAsync(model, prompt, system, maxTokens, temperature);
+                var timeoutTask = Task.Delay(45000);
+
+                var completedTask = await Task.WhenAny(chatTask, timeoutTask);
+                if (completedTask == chatTask)
+                {
+                    var response = await chatTask;
+                    return (response, model);
+                }
+                else
+                {
+                    throw new TimeoutException($"Provider '{providerName}' timed out after 45s");
+                }
             }
             catch (Exception ex)
             {
@@ -496,9 +551,9 @@ namespace DualMind.API.Controllers.Api
                     try
                     {
                         System.Diagnostics.Debug.WriteLine($"Provider '{providerName}' failed for model '{model}', falling back to Groq: {ex.Message}");
-                        var fallbackModel = "mixtral-8x7b-32768";
-                        var groq = ChatProviderFactory.GetGroqProvider();
-                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens);
+                        var fallbackModel = "llama-3.3-70b-versatile";
+                        var groq = _chatProviderFactory.GetGroqProvider();
+                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
                         return (response, fallbackModel);
                     }
                     catch (Exception fallbackEx)
@@ -514,9 +569,9 @@ namespace DualMind.API.Controllers.Api
                     try
                     {
                         System.Diagnostics.Debug.WriteLine($"Groq failed for model '{model}', trying alternative Groq model: {ex.Message}");
-                        var fallbackModel = "llama-3.1-70b-versatile";
-                        var groq = ChatProviderFactory.GetGroqProvider();
-                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens);
+                        var fallbackModel = "llama-3.3-70b-versatile";
+                        var groq = _chatProviderFactory.GetGroqProvider();
+                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
                         return (response, fallbackModel);
                     }
                     catch

@@ -13,13 +13,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/messages")]
     public class AdminThreadMessagesController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "thread_messages";
         private const string ID_COLUMN = "message_id";
 
-        public AdminThreadMessagesController()
+        public AdminThreadMessagesController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/messages - Get all messages

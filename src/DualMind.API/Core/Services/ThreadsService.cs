@@ -7,11 +7,16 @@ using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Core.Services
 {
-    public static class ThreadsService
+    public class ThreadsService : IThreadsService
     {
-        private static readonly SupabaseService _supabase = new SupabaseService();
+        private readonly ISupabaseService _supabase;
 
-        public static async Task<List<ThreadDto>> GetThreadsAsync(Guid? userId, int limit = 20)
+        public ThreadsService(ISupabaseService supabase)
+        {
+            _supabase = supabase;
+        }
+
+        public async Task<List<ThreadDto>> GetThreadsAsync(Guid? userId, int limit = 20)
         {
             try
             {
@@ -44,7 +49,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public static async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId)
+        public async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId)
         {
             try
             {
@@ -71,7 +76,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public static async Task<ThreadDto> GetThreadAsync(Guid threadId)
+        public async Task<ThreadDto> GetThreadAsync(Guid threadId)
         {
             try
             {
@@ -92,6 +97,32 @@ namespace DualMind.API.Core.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to get thread: {ex.Message}");
                 return null;
+            }
+        }
+        public async Task UpdateThreadAsync(Guid threadId, string title)
+        {
+            try
+            {
+                var updateData = new { title = title };
+                await _supabase.UpdateAsync<JObject>("threads", updateData, $"thread_id=eq.{threadId}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to update thread: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task DeleteThreadAsync(Guid threadId)
+        {
+            try
+            {
+                await _supabase.DeleteAsync("threads", $"thread_id=eq.{threadId}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to delete thread: {ex.Message}");
+                throw;
             }
         }
     }

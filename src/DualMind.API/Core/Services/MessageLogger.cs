@@ -4,9 +4,9 @@ using DualMind.API.AI.Contracts;
 
 namespace DualMind.API.Core.Services
 {
-    public static class MessageLogger
+    public class MessageLogger : IMessageLogger
     {
-        public static Task LogMessageAsync(Guid sessionId, string model, string agentType, ChatRequest request, ChatResponse response)
+        public Task LogMessageAsync(Guid sessionId, string model, string agentType, ChatRequest request, ChatResponse response)
         {
             // Log to console for debugging
             System.Diagnostics.Debug.WriteLine($"[{DateTime.UtcNow:O}] Session: {sessionId}, Model: {model}, Agent: {agentType}");

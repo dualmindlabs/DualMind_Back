@@ -13,13 +13,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/comparisons")]
     public class AdminComparisonsController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "comparisons";
         private const string ID_COLUMN = "comparison_id";
 
-        public AdminComparisonsController()
+        public AdminComparisonsController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/comparisons - Get all comparisons with pagination

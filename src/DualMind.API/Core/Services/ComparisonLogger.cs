@@ -8,11 +8,16 @@ using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Core.Services
 {
-    public static class ComparisonLogger
+    public class ComparisonLogger : IComparisonLogger
     {
-        private static readonly SupabaseService _supabase = new SupabaseService();
+        private readonly ISupabaseService _supabase;
 
-        public static async Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, string token)
+        public ComparisonLogger(ISupabaseService supabase)
+        {
+            _supabase = supabase;
+        }
+
+        public async Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, string token)
         {
             try
             {
@@ -61,7 +66,7 @@ namespace DualMind.API.Core.Services
             return null;
         }
 
-        private static async Task<Guid?> GetOrCreateModelIdAsync(string modelName, string displayName, string provider)
+        private async Task<Guid?> GetOrCreateModelIdAsync(string modelName, string displayName, string provider)
         {
             try
             {

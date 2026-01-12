@@ -14,15 +14,15 @@ namespace DualMind.API.AI.Providers
     public class BytezService : IChatProvider
     {
         private readonly HttpClient _client;
-        private readonly Core.Services.ProviderConfigService _config;
+        private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
         private const string BytezApiUrl = "https://api.bytez.com/v1/chat/completions";
 
-        public BytezService()
+        public BytezService(Core.Services.IProviderConfigService config)
         {
             _client = new HttpClient();
             _client.Timeout = TimeSpan.FromSeconds(300); // Higher timeout for Bytez
-            _config = new Core.Services.ProviderConfigService();
+            _config = config;
             _classifier = new Core.Services.ProviderErrorClassifier();
         }
 
@@ -70,7 +70,7 @@ namespace DualMind.API.AI.Providers
             }
         }
 
-        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null)
+        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
         {
             return await ExecuteWithRetryAsync(async (key) =>
             {
@@ -83,7 +83,7 @@ namespace DualMind.API.AI.Providers
                     model = model,
                     messages = messages,
                     max_tokens = maxTokens ?? 4096,
-                    temperature = 0.7
+                    temperature = temperature ?? 0.7
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);

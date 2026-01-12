@@ -11,34 +11,40 @@ using DualMind.API.Infrastructure.Configuration;
 
 namespace DualMind.API.Infrastructure.Data
 {
-    public class AdminSupabaseClient
+    public interface IAdminSupabaseClient
     {
-        private static readonly HttpClient _httpClient;
+        Task<int> CountFastAsync(string table, string idColumn, string filters = "");
+        Task<string> GetAllAsync(string table, string query = "");
+        Task<string> GetByIdAsync(string table, string idColumn, string id);
+        Task<HttpResponseMessage> CreateAsync(string table, object data);
+        Task<HttpResponseMessage> UpdateAsync(string table, string idColumn, string id, object data);
+        Task<HttpResponseMessage> DeleteAsync(string table, string idColumn, string id);
+        Task<string> QueryAsync(string table, string filters);
+    }
+
+    public class AdminSupabaseClient : IAdminSupabaseClient
+    {
+        private readonly HttpClient _httpClient;
         private readonly string _baseUrl;
 
-        static AdminSupabaseClient()
+        public AdminSupabaseClient(HttpClient httpClient, Microsoft.Extensions.Options.IOptions<DualMind.API.Infrastructure.Configuration.SupabaseSettings> settings)
         {
-            _httpClient = new HttpClient();
-            EnvConfig.Load();
-            var apiKey = EnvConfig.SupabaseServiceKey ?? EnvConfig.SupabaseKey;
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                Console.WriteLine("ERROR: Supabase API key is not configured. Please check SUPABASE_SERVICE_KEY or SUPABASE_KEY in .env file.");
-            }
-            else
-            {
-                _httpClient.DefaultRequestHeaders.Add("apikey", apiKey);
-                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-            }
-        }
+            _httpClient = httpClient;
+            _baseUrl = settings.Value.Url?.TrimEnd('/');
 
-        public AdminSupabaseClient()
-        {
-            EnvConfig.Load();
-            _baseUrl = EnvConfig.SupabaseUrl?.TrimEnd('/');
+            var key = settings.Value.ServiceKey ?? settings.Value.Key;
+            
             if (string.IsNullOrEmpty(_baseUrl))
             {
-                Console.WriteLine("ERROR: Supabase URL is not configured. Please check SUPABASE_URL in .env file.");
+                // Should probably throw or log
+                Console.WriteLine("ERROR: Supabase URL is not configured.");
+            }
+
+            if (!string.IsNullOrEmpty(key))
+            {
+               _httpClient.DefaultRequestHeaders.Clear();
+               _httpClient.DefaultRequestHeaders.Add("apikey", key);
+               _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {key}");
             }
         }
 

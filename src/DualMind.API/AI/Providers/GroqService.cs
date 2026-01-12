@@ -14,7 +14,7 @@ namespace DualMind.API.AI.Providers
     public class GroqService : IChatProvider
     {
         private readonly HttpClient _client;
-        private readonly Core.Services.ProviderConfigService _config;
+        private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
         private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
         private const string GroqSpeechApiUrl = "https://api.groq.com/openai/v1/audio/speech";
@@ -22,10 +22,10 @@ namespace DualMind.API.AI.Providers
         // Environment variable API key (for local .env or Azure secrets)
         private readonly string _envApiKey;
 
-        public GroqService()
+        public GroqService(Core.Services.IProviderConfigService config)
         {
             _client = new HttpClient();
-            _config = new Core.Services.ProviderConfigService();
+            _config = config;
             _classifier = new Core.Services.ProviderErrorClassifier();
 
             // Check for GROQ_API_KEY in environment variables first (from .env or Azure secrets)
@@ -115,7 +115,7 @@ namespace DualMind.API.AI.Providers
             }
         }
 
-        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null)
+        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
         {
             return await ExecuteWithRetryAsync(async (apiKey) =>
             {
@@ -128,7 +128,7 @@ namespace DualMind.API.AI.Providers
                     model = model,
                     messages = messages,
                     max_tokens = maxTokens ?? 4096,
-                    temperature = 0.7
+                    temperature = temperature ?? 0.7
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);
@@ -205,7 +205,7 @@ namespace DualMind.API.AI.Providers
              // The stream processing happens inside the action.
              await ExecuteWithRetryAsync<bool>(async (apiKey) =>
              {
-                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? "llama-3.1-70b-versatile" : request.Model;
+                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? "llama-3.3-70b-versatile" : request.Model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
                 messages.Add(new { role = "user", content = request.Prompt });
@@ -215,7 +215,7 @@ namespace DualMind.API.AI.Providers
                     model = model,
                     messages = messages,
                     max_tokens = request.MaxTokens ?? 4096,
-                    temperature = 0.7,
+                    temperature = request.Temperature ?? 0.7,
                     stream = true
                 };
 

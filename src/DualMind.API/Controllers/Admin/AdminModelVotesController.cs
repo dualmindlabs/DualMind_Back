@@ -13,13 +13,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/votes")]
     public class AdminModelVotesController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "model_votes";
         private const string ID_COLUMN = "vote_id";
 
-        public AdminModelVotesController()
+        public AdminModelVotesController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/votes - Get all votes
@@ -245,7 +245,14 @@ namespace DualMind.API.Controllers.Admin
                 {
                     var filterQuery = $"winner_model_id=eq.{model.ModelId}";
                     var winCount = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-                    stats[model.ModelName ?? model.ModelId.ToString()] = new
+                    var key = model.ModelName;
+                    if (string.IsNullOrEmpty(key) && model.ModelId.HasValue)
+                        key = model.ModelId.Value.ToString();
+                    
+                    if (string.IsNullOrEmpty(key))
+                        key = "Unknown Model";
+
+                    stats[key] = new
                     {
                         model_id = model.ModelId,
                         model_name = model.ModelName,

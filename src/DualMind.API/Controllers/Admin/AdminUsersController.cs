@@ -16,13 +16,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/users")]
     public class AdminUsersController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "users";
         private const string ID_COLUMN = "user_id";
 
-        public AdminUsersController()
+        public AdminUsersController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/users - Get all users

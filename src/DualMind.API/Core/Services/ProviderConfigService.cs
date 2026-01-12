@@ -8,9 +8,20 @@ using DualMind.API.Infrastructure.Data;
 
 namespace DualMind.API.Core.Services
 {
-    public class ProviderConfigService
+    public interface IProviderConfigService
     {
-        private readonly AdminSupabaseClient _supabase;
+        Task RefreshConfigAsync();
+        Task<List<Provider>> GetAllProvidersAsync();
+        Task<Provider> GetProviderAsync(string name);
+        Task<List<ProviderApiKey>> GetKeysForProviderAsync(string providerName);
+        Task<ProviderConfigService.DecryptedProviderKey> GetNextKeyAsync(string providerName, HashSet<Guid> triedKeyIds = null);
+        Task ReportKeySuccessAsync(Guid keyId);
+        Task ReportKeyFailureAsync(Guid keyId, ProviderErrorType error);
+    }
+
+    public class ProviderConfigService : IProviderConfigService
+    {
+        private readonly IAdminSupabaseClient _supabase;
 
         // Cache: ProviderName -> List of Keys
         private static ConcurrentDictionary<string, List<ProviderApiKey>> _keysCache = new ConcurrentDictionary<string, List<ProviderApiKey>>();
@@ -22,9 +33,9 @@ namespace DualMind.API.Core.Services
         private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
         private static readonly object _lock = new object();
 
-        public ProviderConfigService()
+        public ProviderConfigService(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         /// <summary>
@@ -216,8 +227,8 @@ namespace DualMind.API.Core.Services
         public class DecryptedProviderKey
         {
             public Guid KeyId { get; set; }
-            public string ProviderName { get; set; }
-            public string Ticket { get; set; }
+            public string ProviderName { get; set; } = string.Empty;
+            public string Ticket { get; set; } = string.Empty;
         }
     }
 }

@@ -16,13 +16,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/models")]
     public class AdminAIModelsController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
+        private readonly IAdminSupabaseClient _supabase;
         private const string TABLE = "ai_models";
         private const string ID_COLUMN = "model_id";
 
-        public AdminAIModelsController()
+        public AdminAIModelsController(IAdminSupabaseClient supabase)
         {
-            _supabase = new AdminSupabaseClient();
+            _supabase = supabase;
         }
 
         // GET api/admin/models - Get all AI models

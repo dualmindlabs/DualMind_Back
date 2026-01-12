@@ -5,35 +5,43 @@ using System.Threading.Tasks;
 
 namespace DualMind.API.Core.Services
 {
-    public static class LeaderboardModelSelector
+    public class LeaderboardModelSelector : ILeaderboardModelSelector
     {
-        private static readonly Random _random = new Random();
+        private readonly IModelStatsService _modelStatsService;
+        private readonly IModelSelector _modelSelector;
+        private readonly Random _random = new Random();
 
-        public static async Task<(string model1, string model2)> GetTopperAndRandomModelAsync(string token)
+        public LeaderboardModelSelector(IModelStatsService modelStatsService, IModelSelector modelSelector)
+        {
+            _modelStatsService = modelStatsService;
+            _modelSelector = modelSelector;
+        }
+
+        public async Task<(string model1, string model2)> GetTopperAndRandomModelAsync(string token)
         {
             try
             {
-                var stats = await ModelStatsService.GetModelStatsAsync();
+                var stats = await _modelStatsService.GetModelStatsAsync();
 
                 if (stats == null || stats.Count == 0)
                 {
-                    return await ModelSelector.GetTwoRandomModelsAsync();
+                    return await _modelSelector.GetTwoRandomModelsAsync();
                 }
 
                 var topModel = stats.OrderByDescending(s => s.WinRate).FirstOrDefault();
                 if (topModel == null)
                 {
-                    return await ModelSelector.GetTwoRandomModelsAsync();
+                    return await _modelSelector.GetTwoRandomModelsAsync();
                 }
 
-                var allModels = ModelSelector.GetAllModels();
+                var allModels = _modelSelector.GetAllModels();
                 var otherModels = allModels
                     .Where(m => !m.Name.Equals(topModel.ModelName, StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
                 if (otherModels.Count == 0)
                 {
-                    return await ModelSelector.GetTwoRandomModelsAsync();
+                    return await _modelSelector.GetTwoRandomModelsAsync();
                 }
 
                 var randomIndex = _random.Next(otherModels.Count);
@@ -43,7 +51,7 @@ namespace DualMind.API.Core.Services
             }
             catch
             {
-                return await ModelSelector.GetTwoRandomModelsAsync();
+                return await _modelSelector.GetTwoRandomModelsAsync();
             }
         }
     }

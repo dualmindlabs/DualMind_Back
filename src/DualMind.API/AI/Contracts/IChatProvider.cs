@@ -5,7 +5,7 @@ namespace DualMind.API.AI.Contracts
 {
     public interface IChatProvider
     {
-        Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null);
+        Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null);
         bool SupportsStreaming { get; }
         Task StreamAsync(ChatRequest request, Func<AIStreamEvent, Task> onEvent, System.Threading.CancellationToken cancellationToken);
     }

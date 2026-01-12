@@ -83,10 +83,10 @@ namespace DualMind.API.Core.Models
         public DateTime? LastUsedAt { get; set; }
 
         [JsonProperty("last_error_type")]
-        public string LastErrorType { get; set; }
+        public string LastErrorType { get; set; } = string.Empty;
 
         [JsonProperty("last_error_category")]
-        public string LastErrorCategory { get; set; }
+        public string LastErrorCategory { get; set; } = string.Empty;
 
         [JsonProperty("cooldown_until")]
         public DateTime? CooldownUntil { get; set; }

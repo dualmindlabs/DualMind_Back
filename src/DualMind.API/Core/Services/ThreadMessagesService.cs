@@ -8,11 +8,16 @@ using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Core.Services
 {
-    public static class ThreadMessagesService
+    public class ThreadMessagesService : IThreadMessagesService
     {
-        private static readonly SupabaseService _supabase = new SupabaseService();
+        private readonly ISupabaseService _supabase;
+        
+        public ThreadMessagesService(ISupabaseService supabase)
+        {
+            _supabase = supabase;
+        }
 
-        public static async Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response, string token)
+        public async Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response, string token)
         {
             try
             {
@@ -35,7 +40,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public static async Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, string token)
+        public async Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, string token, Guid? comparisonId = null)
         {
             try
             {
@@ -51,7 +56,8 @@ namespace DualMind.API.Core.Services
                     model1_response = response1.Message,
                     model2_response = response2.Message,
                     model1_time_ms = (int)response1.ResponseTimeMs,
-                    model2_time_ms = (int)response2.ResponseTimeMs
+                    model2_time_ms = (int)response2.ResponseTimeMs,
+                    comparison_id = comparisonId
                 };
 
                 await _supabase.InsertAsync<object>("thread_messages", message);
@@ -62,13 +68,14 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public static async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId, string token)
+        public async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId, string token)
         {
             try
             {
+                // Select columns including comparison_id
                 var messages = await _supabase.SelectAsync<JObject>(
                     "thread_messages",
-                    "message_id,thread_id,prompt_text,model1_id,model2_id,model1_response,model2_response,model1_time_ms,model2_time_ms,created_at",
+                    "message_id,thread_id,prompt_text,model1_id,model2_id,model1_response,model2_response,model1_time_ms,model2_time_ms,created_at,comparison_id",
                     $"thread_id=eq.{threadId}&order=created_at.asc"
                 );
 
@@ -86,6 +93,60 @@ namespace DualMind.API.Core.Services
                         Model2TimeMs = m["model2_time_ms"] != null && m["model2_time_ms"].Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model2_time_ms"]) : null,
                         CreatedAt = DateTime.Parse(m["created_at"].ToString())
                     };
+
+                    if (m["comparison_id"] != null && m["comparison_id"].Type != JTokenType.Null)
+                    {
+                        var compIdStr = m["comparison_id"].ToString();
+                        if (Guid.TryParse(compIdStr, out Guid comparisonId))
+                        {
+                            dto.ComparisonId = comparisonId;
+                            
+                            // Fetch vote for this comparison if it exists
+                            try 
+                            {
+                                var votes = await _supabase.SelectAsync<JObject>("model_votes", "winner_model_id", $"comparison_id=eq.{comparisonId}");
+                                if (votes != null && votes.Count > 0)
+                                {
+                                    // Determine vote choice based on votes found
+                                    // Logic must match ModelStatsService.RecordVoteByChoiceAsync:
+                                    // - tie: 2 rows (one for each model)
+                                    // - both-bad: 1 row (winner_model_id is null)
+                                    // - left/right: 1 row (winner matching model1 or model2)
+                                    
+                                    bool hasM1 = false;
+                                    bool hasM2 = false;
+                                    bool hasNull = false;
+
+                                    var m1IdStr = m["model1_id"]?.ToString();
+                                    var m2IdStr = m["model2_id"]?.ToString();
+
+                                    foreach(var v in votes) 
+                                    {
+                                        var w = v["winner_model_id"];
+                                        if (w == null || w.Type == JTokenType.Null) 
+                                        {
+                                            hasNull = true;
+                                        } 
+                                        else 
+                                        {
+                                            var wId = w.ToString();
+                                            if (!string.IsNullOrEmpty(m1IdStr) && string.Equals(wId, m1IdStr, StringComparison.OrdinalIgnoreCase)) hasM1 = true;
+                                            if (!string.IsNullOrEmpty(m2IdStr) && string.Equals(wId, m2IdStr, StringComparison.OrdinalIgnoreCase)) hasM2 = true;
+                                        }
+                                    }
+
+                                    if (hasM1 && hasM2) dto.VoteChoice = "tie";
+                                    else if (hasNull) dto.VoteChoice = "both-bad";
+                                    else if (hasM1) dto.VoteChoice = "left";
+                                    else if (hasM2) dto.VoteChoice = "right";
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Error fetching votes for comparison {comparisonId}: {ex.Message}");
+                            }
+                        }
+                    }
 
                     if (m["model1_id"] != null && m["model1_id"].Type != JTokenType.Null)
                     {
@@ -111,7 +172,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        private static async Task<Guid?> GetModelIdAsync(string modelName)
+        private async Task<Guid?> GetModelIdAsync(string modelName)
         {
             try
             {
@@ -128,7 +189,7 @@ namespace DualMind.API.Core.Services
             return null;
         }
 
-        private static async Task<string> GetModelNameAsync(Guid modelId)
+        private async Task<string> GetModelNameAsync(Guid modelId)
         {
             try
             {

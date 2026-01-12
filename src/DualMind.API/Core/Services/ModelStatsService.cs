@@ -8,11 +8,16 @@ using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Core.Services
 {
-    public static class ModelStatsService
+    public class ModelStatsService : IModelStatsService
     {
-        private static readonly SupabaseService _supabase = new SupabaseService();
+        private readonly ISupabaseService _supabase;
+        
+        public ModelStatsService(ISupabaseService supabase)
+        {
+            _supabase = supabase;
+        }
 
-        public static async Task<List<ModelStatsDto>> GetModelStatsAsync()
+        public async Task<List<ModelStatsDto>> GetModelStatsAsync()
         {
             try
             {
@@ -85,7 +90,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public static async Task RecordVoteAsync(Guid comparisonId, string winnerModelName, Guid? userId)
+        public async Task RecordVoteAsync(Guid comparisonId, string winnerModelName, Guid? userId)
         {
             try
             {
@@ -116,6 +121,53 @@ namespace DualMind.API.Core.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to record vote: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task RecordVoteByChoiceAsync(Guid comparisonId, string voteChoice, Guid? userId)
+        {
+            try
+            {
+                // 1. Fetch Comparison to get models
+                var comps = await _supabase.SelectAsync<JObject>("comparisons", "model1_id,model2_id", $"comparison_id=eq.{comparisonId}");
+                if (comps == null || comps.Count == 0)
+                    throw new Exception("Comparison not found");
+
+                var comp = comps[0];
+                Guid? model1Id = comp["model1_id"]?.Type != JTokenType.Null ? Guid.Parse(comp["model1_id"].ToString()) : (Guid?)null;
+                Guid? model2Id = comp["model2_id"]?.Type != JTokenType.Null ? Guid.Parse(comp["model2_id"].ToString()) : (Guid?)null;
+
+                var votesToInsert = new List<object>();
+
+                if (voteChoice == "left" && model1Id.HasValue)
+                {
+                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model1Id.Value });
+                }
+                else if (voteChoice == "right" && model2Id.HasValue)
+                {
+                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model2Id.Value });
+                }
+                else if (voteChoice == "tie")
+                {
+                    if (model1Id.HasValue) votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model1Id.Value });
+                    if (model2Id.HasValue) votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model2Id.Value });
+                }
+                else if (voteChoice == "both-bad")
+                {
+                    // For both-bad, we insert a record with no winner (if schema allows null) or strict negative?
+                    // Assuming 'model_votes' allows null winner_model_id for "no winner"
+                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = (Guid?)null });
+                }
+
+                foreach (var vote in votesToInsert)
+                {
+                     await _supabase.InsertAsync<object>("model_votes", vote);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to record vote by choice: {ex.Message}");
                 throw;
             }
         }

@@ -10,9 +10,9 @@ namespace DualMind.API.Controllers
     {
         private readonly GroqService _groqService;
 
-        public SpeechController()
+        public SpeechController(GroqService groqService)
         {
-            _groqService = new GroqService();
+            _groqService = groqService;
         }
 
         [HttpPost]

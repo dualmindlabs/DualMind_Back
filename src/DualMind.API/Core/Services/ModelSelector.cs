@@ -4,29 +4,31 @@ using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using DualMind.API.Infrastructure.Data;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace DualMind.API.Core.Services
 {
-    public static class ModelSelector
+    public class ModelSelector : IModelSelector
     {
-        private static readonly Random _random = new Random();
+        private readonly ISupabaseService _supabase;
+        private readonly IMemoryCache _cache;
+        private readonly Random _random = new Random();
+        private const string CacheKey = "ai_models_cache";
 
-        private static readonly object _cacheLock = new object();
-        private static List<ModelDefinition> _cachedModels = null;
-        private static DateTime _cacheExpiresAtUtc = DateTime.MinValue;
-
-        private static async Task<List<ModelDefinition>> LoadModelsAsync(bool force = false)
+        public ModelSelector(ISupabaseService supabase, IMemoryCache cache)
         {
-            lock (_cacheLock)
+            _supabase = supabase;
+            _cache = cache;
+        }
+
+        private async Task<List<ModelDefinition>> LoadModelsAsync(bool force = false)
+        {
+            if (!force && _cache.TryGetValue(CacheKey, out List<ModelDefinition> cachedModels))
             {
-                if (!force && _cachedModels != null && DateTime.UtcNow < _cacheExpiresAtUtc)
-                {
-                    return _cachedModels.ToList();
-                }
+                return cachedModels;
             }
 
-            var supabase = new SupabaseService();
-            var rows = await supabase.SelectAsync<JObject>(
+            var rows = await _supabase.SelectAsync<JObject>(
                 "ai_models",
                 "model_id,model_name,provider_name,api_url,description,status",
                 "status=eq.active&order=created_at.desc"
@@ -44,44 +46,53 @@ namespace DualMind.API.Core.Services
                 .Where(m => !string.IsNullOrWhiteSpace(m.Name))
                 .ToList();
 
-            lock (_cacheLock)
-            {
-                _cachedModels = list;
-                _cacheExpiresAtUtc = DateTime.UtcNow.AddMinutes(5);
-            }
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+
+            _cache.Set(CacheKey, list, cacheEntryOptions);
 
             return list;
         }
 
-        public static List<ModelDefinition> GetAllModels()
+        public List<ModelDefinition> GetAllModels()
         {
-            lock (_cacheLock)
+            // Note: Since this was synchronous before, but data loading is async, 
+            // the previous implementation used a lock and potentially stale data or blocking?
+            // Actually, the previous LoadModelsAsync was async. GetAllModels took a lock.
+            // For now, if we need synchronous access, we rely on cache.
+            // But if cache is empty, we can't await here easily.
+            // Ideally, we changle GetAllModels to GetAllModelsAsync.
+            // But to preserve signature blindly:
+            if (_cache.TryGetValue(CacheKey, out List<ModelDefinition> cachedModels))
             {
-                return (_cachedModels ?? new List<ModelDefinition>()).ToList();
+                return cachedModels;
             }
+            // Fallback: block or return empty. Returning empty is safer than deadlock.
+            return new List<ModelDefinition>(); 
         }
 
-        public static Task<string> GetRandomModelAsync()
+        public async Task<string> GetRandomModelAsync()
         {
-            return GetRandomModelInternalAsync();
+            return await GetRandomModelInternalAsync();
         }
 
-        public static Task<(string model1, string model2)> GetTwoRandomModelsAsync()
+        public async Task<(string model1, string model2)> GetTwoRandomModelsAsync()
         {
-            return GetTwoRandomModelsInternalAsync();
+            return await GetTwoRandomModelsInternalAsync();
         }
 
-        public static ModelDefinition GetModelInfo(string modelName)
+        public ModelDefinition GetModelInfo(string modelName)
         {
             if (string.IsNullOrWhiteSpace(modelName)) return null;
-            lock (_cacheLock)
+            if (_cache.TryGetValue(CacheKey, out List<ModelDefinition> cachedModels))
             {
-                return (_cachedModels ?? new List<ModelDefinition>()).FirstOrDefault(m =>
+                return cachedModels.FirstOrDefault(m =>
                     m.Name != null && m.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase));
             }
+            return null;
         }
 
-        private static async Task<string> GetRandomModelInternalAsync()
+        private async Task<string> GetRandomModelInternalAsync()
         {
             var models = await LoadModelsAsync();
             if (models.Count == 0)
@@ -91,7 +102,7 @@ namespace DualMind.API.Core.Services
             return models[index].Name;
         }
 
-        private static async Task<(string model1, string model2)> GetTwoRandomModelsInternalAsync()
+        private async Task<(string model1, string model2)> GetTwoRandomModelsInternalAsync()
         {
             var models = await LoadModelsAsync();
             if (models.Count < 2)

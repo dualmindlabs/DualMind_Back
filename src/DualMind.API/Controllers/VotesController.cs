@@ -12,6 +12,13 @@ namespace DualMind.API.Controllers
     [DualMind.API.Filters.SupabaseAuth]
     public class VotesController : ControllerBase
     {
+        private readonly IModelStatsService _modelStatsService;
+
+        public VotesController(IModelStatsService modelStatsService)
+        {
+            _modelStatsService = modelStatsService;
+        }
+
         [HttpPost]
         [Route("model-vote")]
         public async Task<IActionResult> SubmitVote([FromBody] VoteRequest request)
@@ -26,12 +33,12 @@ namespace DualMind.API.Controllers
                 });
             }
 
-            if (string.IsNullOrWhiteSpace(request.WinnerModelName))
+            if (string.IsNullOrWhiteSpace(request.VoteChoice))
             {
                 return BadRequest( new
                 {
                     success = false,
-                    error = "WinnerModelName is required",
+                    error = "VoteChoice is required (left, right, tie, both-bad)",
                     code = "INVALID_REQUEST"
                 });
             }
@@ -44,7 +51,12 @@ namespace DualMind.API.Controllers
                     userId = (Guid)HttpContext.Items["UserId"];
                 }
 
-                await ModelStatsService.RecordVoteAsync(request.ComparisonId, request.WinnerModelName, userId);
+                // NEW: Handle voteChoice enum -> winner model logic
+                await _modelStatsService.RecordVoteByChoiceAsync(
+                    request.ComparisonId, 
+                    request.VoteChoice.ToLower(), 
+                    userId
+                );
 
                 return Ok(new
                 {
@@ -69,7 +81,7 @@ namespace DualMind.API.Controllers
         {
             try
             {
-                var stats = await ModelStatsService.GetModelStatsAsync();
+                var stats = await _modelStatsService.GetModelStatsAsync();
 
                 return Ok(new { items = stats });
             }
@@ -83,5 +95,15 @@ namespace DualMind.API.Controllers
                 });
             }
         }
+    }
+
+    public class VoteRequest
+    {
+        public Guid ComparisonId { get; set; }
+        public string VoteChoice { get; set; } // "left" | "right" | "tie" | "both-bad"
+        public Guid? UserId { get; set; }
+        
+        // DEPRECATED but kept for backwards compatibility
+        public string WinnerModelName { get; set; }
     }
 }

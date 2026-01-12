@@ -15,13 +15,13 @@ namespace DualMind.API.Controllers.Admin
     [Route("api/admin/dashboard")]
     public class AdminDashboardController : ControllerBase
     {
-        private readonly AdminSupabaseClient _supabase;
-        private readonly ProviderConfigService _providerConfig;
+        private readonly IAdminSupabaseClient _supabase;
+        private readonly IProviderConfigService _providerConfig;
 
-        public AdminDashboardController()
+        public AdminDashboardController(IAdminSupabaseClient supabase, IProviderConfigService providerConfig)
         {
-            _supabase = new AdminSupabaseClient();
-            _providerConfig = new ProviderConfigService();
+            _supabase = supabase;
+            _providerConfig = providerConfig;
         }
 
         // GET api/admin/dashboard/stats - Get overall statistics

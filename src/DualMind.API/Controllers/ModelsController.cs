@@ -13,15 +13,20 @@ namespace DualMind.API.Controllers
     [DualMind.API.Filters.SupabaseAuth]
     public class ModelsController : ControllerBase
     {
+        private readonly ISupabaseService _supabase;
+
+        public ModelsController(ISupabaseService supabase)
+        {
+            _supabase = supabase;
+        }
+
         [HttpGet]
         [Route("")]
         public async Task<IActionResult> GetModels()
         {
             try
             {
-                var supabase = new SupabaseService();
-
-                var rows = await supabase.SelectAsync<JObject>(
+                var rows = await _supabase.SelectAsync<JObject>(
                     "ai_models",
                     "model_id,model_name,provider_name,api_url,description,status,created_at",
                     "status=eq.active&order=created_at.desc"
