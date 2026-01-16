@@ -18,14 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSBuild path
-        uses: microsoft/setup-msbuild@v1.0.2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1.0.5
-
-      - name: Restore NuGet packages
-        run: nuget restore
+      - name: Restore
+        run: dotnet restore src/DualMind.API/DualMind.API.csproj
 
       - name: Prepare publish folder
         run: |
@@ -35,7 +34,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\published" | Out-Null
 
       - name: Publish to folder
-        run: msbuild DualMind_Back.csproj /nologo /verbosity:m /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\\published\\"
+        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o "${{ github.workspace }}\published" --no-restore
 
       - name: Copy site content to publish folder
         run: |

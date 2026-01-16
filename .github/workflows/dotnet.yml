@@ -3,7 +3,7 @@ name: Build and deploy ASP.NET 4.8 to Azure Web App
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -14,17 +14,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-      - name: Restore NuGet
-        run: nuget restore DualMind_Back.csproj
+      - name: Restore
+        run: dotnet restore src/DualMind.API/DualMind.API.csproj
 
       - name: Build
-        run: msbuild DualMind_Back.csproj /p:Configuration=Release
+        run: dotnet build src/DualMind.API/DualMind.API.csproj -c Release --no-restore
 
       - name: Publish
-        run: msbuild DualMind_Back.csproj /p:Configuration=Release /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem /p:PublishUrl="${{ github.workspace }}\published"
+        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o "${{ github.workspace }}\published" --no-build
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
