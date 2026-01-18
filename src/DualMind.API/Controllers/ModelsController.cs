@@ -10,7 +10,7 @@ using Newtonsoft.Json.Linq;
 namespace DualMind.API.Controllers
 {
     [Route("api/models")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
     public class ModelsController : ControllerBase
     {
         private readonly ISupabaseService _supabase;

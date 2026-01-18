@@ -7,19 +7,21 @@ namespace DualMind.API.Core.Services
 {
     public interface IUserSyncService
     {
-        Task EnsureUserExistsAsync(Guid authUserId, string email, string fullName);
+        Task EnsureUserExistsAsync(Guid authUserId, string? email, string? fullName);
     }
 
     public class UserSyncService : IUserSyncService
     {
         private readonly ISupabaseService _supabase;
+        private readonly Microsoft.Extensions.Logging.ILogger<UserSyncService> _logger;
 
-        public UserSyncService(ISupabaseService supabase)
+        public UserSyncService(ISupabaseService supabase, Microsoft.Extensions.Logging.ILogger<UserSyncService> logger)
         {
             _supabase = supabase;
+            _logger = logger;
         }
 
-        public async Task EnsureUserExistsAsync(Guid authUserId, string email, string fullName)
+        public async Task EnsureUserExistsAsync(Guid authUserId, string? email, string? fullName)
         {
             try
             {
@@ -36,26 +38,28 @@ namespace DualMind.API.Core.Services
                     return;
                 }
 
+                var safeEmail = email ?? $"user_{authUserId}@placeholder.com";
+                
                 // Create user row in public.users
                 var user = new
                 {
                     user_id = authUserId,
-                    email = email,
+                    email = safeEmail,
                     full_name = string.IsNullOrWhiteSpace(fullName)
-                        ? email.Split('@')[0] // Fallback to email prefix
+                        ? safeEmail.Split('@')[0] // Fallback to email prefix
                         : fullName,
                     role = "user",
                     created_at = DateTime.UtcNow
                 };
 
                 await _supabase.InsertAsync<object>("users", user);
-                System.Diagnostics.Debug.WriteLine($"✅ Created public.users row for {authUserId} ({email})");
+                _logger.LogInformation("Created public.users row for {UserId} ({Email})", authUserId, safeEmail);
             }
             catch (Exception ex)
             {
                 // Log but don't fail the request if user creation fails
                 // The FK constraint will still prevent thread creation if this fails
-                System.Diagnostics.Debug.WriteLine($"⚠️ Failed to sync user to public.users: {ex.Message}");
+                _logger.LogWarning(ex, "Failed to sync user to public.users");
             }
         }
     }

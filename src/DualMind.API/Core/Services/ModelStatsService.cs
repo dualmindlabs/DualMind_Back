@@ -11,10 +11,12 @@ namespace DualMind.API.Core.Services
     public class ModelStatsService : IModelStatsService
     {
         private readonly ISupabaseService _supabase;
+        private readonly Microsoft.Extensions.Logging.ILogger<ModelStatsService> _logger;
         
-        public ModelStatsService(ISupabaseService supabase)
+        public ModelStatsService(ISupabaseService supabase, Microsoft.Extensions.Logging.ILogger<ModelStatsService> logger)
         {
             _supabase = supabase;
+            _logger = logger;
         }
 
         public async Task<List<ModelStatsDto>> GetModelStatsAsync()
@@ -48,24 +50,25 @@ namespace DualMind.API.Core.Services
 
                 foreach (var comp in comparisons)
                 {
-                    if (comp["model1_id"] != null && comp["model1_id"].Type != JTokenType.Null)
+                    var m1 = comp["model1_id"];
+                    if (m1 != null && m1.Type != JTokenType.Null && Guid.TryParse(m1.ToString(), out var id1) && stats.ContainsKey(id1))
                     {
-                        if (Guid.TryParse(comp["model1_id"].ToString(), out var id) && stats.ContainsKey(id))
-                            stats[id].TotalResponses++;
+                        stats[id1].TotalResponses++;
                     }
-                    if (comp["model2_id"] != null && comp["model2_id"].Type != JTokenType.Null)
+
+                    var m2 = comp["model2_id"];
+                    if (m2 != null && m2.Type != JTokenType.Null && Guid.TryParse(m2.ToString(), out var id2) && stats.ContainsKey(id2))
                     {
-                        if (Guid.TryParse(comp["model2_id"].ToString(), out var id) && stats.ContainsKey(id))
-                            stats[id].TotalResponses++;
+                        stats[id2].TotalResponses++;
                     }
                 }
 
                 foreach (var vote in votes)
                 {
-                    if (vote["winner_model_id"] != null && vote["winner_model_id"].Type != JTokenType.Null)
+                    var w = vote["winner_model_id"];
+                    if (w != null && w.Type != JTokenType.Null && Guid.TryParse(w.ToString(), out var id) && stats.ContainsKey(id))
                     {
-                        if (Guid.TryParse(vote["winner_model_id"].ToString(), out var id) && stats.ContainsKey(id))
-                            stats[id].TotalWins++;
+                        stats[id].TotalWins++;
                     }
                 }
 
@@ -85,7 +88,7 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to get model stats: {ex.Message}");
+                _logger.LogError(ex, "Failed to get model stats");
                 return new List<ModelStatsDto>();
             }
         }
@@ -94,7 +97,7 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                // Sanitize model name to prevent injection (PostgREST handles this, but we validate anyway)
+                // Sanitize model name
                 var sanitizedModelName = winnerModelName?.Trim();
                 if (string.IsNullOrWhiteSpace(sanitizedModelName))
                     throw new ArgumentException("Winner model name cannot be empty", nameof(winnerModelName));
@@ -103,10 +106,11 @@ namespace DualMind.API.Core.Services
                 if (models == null || models.Count == 0)
                     throw new Exception($"Model not found: {winnerModelName}");
 
-                if (models[0]["model_id"] == null || models[0]["model_id"].Type == JTokenType.Null)
+                var mToken = models[0]["model_id"];
+                if (mToken == null || mToken.Type == JTokenType.Null)
                     throw new Exception($"Model ID is null for model: {winnerModelName}");
 
-                if (!Guid.TryParse(models[0]["model_id"].ToString(), out var winnerModelId))
+                if (!Guid.TryParse(mToken.ToString(), out var winnerModelId))
                     throw new Exception($"Invalid model ID format for model: {winnerModelName}");
 
                 var vote = new
@@ -120,7 +124,7 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to record vote: {ex.Message}");
+                _logger.LogError(ex, "Failed to record vote for comparison {ComparisonId}", comparisonId);
                 throw;
             }
         }
@@ -135,8 +139,11 @@ namespace DualMind.API.Core.Services
                     throw new Exception("Comparison not found");
 
                 var comp = comps[0];
-                Guid? model1Id = comp["model1_id"]?.Type != JTokenType.Null ? Guid.Parse(comp["model1_id"].ToString()) : (Guid?)null;
-                Guid? model2Id = comp["model2_id"]?.Type != JTokenType.Null ? Guid.Parse(comp["model2_id"].ToString()) : (Guid?)null;
+                var m1 = comp["model1_id"];
+                var m2 = comp["model2_id"];
+                
+                Guid? model1Id = (m1 != null && m1.Type != JTokenType.Null) ? Guid.Parse(m1.ToString()) : (Guid?)null;
+                Guid? model2Id = (m2 != null && m2.Type != JTokenType.Null) ? Guid.Parse(m2.ToString()) : (Guid?)null;
 
                 var votesToInsert = new List<object>();
 
@@ -155,8 +162,6 @@ namespace DualMind.API.Core.Services
                 }
                 else if (voteChoice == "both-bad")
                 {
-                    // For both-bad, we insert a record with no winner (if schema allows null) or strict negative?
-                    // Assuming 'model_votes' allows null winner_model_id for "no winner"
                     votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = (Guid?)null });
                 }
 
@@ -167,7 +172,7 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to record vote by choice: {ex.Message}");
+                _logger.LogError(ex, "Failed to record vote by choice {Choice} for comparison {ComparisonId}", voteChoice, comparisonId);
                 throw;
             }
         }

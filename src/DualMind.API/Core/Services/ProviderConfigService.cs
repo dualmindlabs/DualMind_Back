@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 
@@ -22,6 +23,7 @@ namespace DualMind.API.Core.Services
     public class ProviderConfigService : IProviderConfigService
     {
         private readonly IAdminSupabaseClient _supabase;
+        private readonly ILogger<ProviderConfigService> _logger;
 
         // Cache: ProviderName -> List of Keys
         private static ConcurrentDictionary<string, List<ProviderApiKey>> _keysCache = new ConcurrentDictionary<string, List<ProviderApiKey>>();
@@ -33,9 +35,10 @@ namespace DualMind.API.Core.Services
         private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
         private static readonly object _lock = new object();
 
-        public ProviderConfigService(IAdminSupabaseClient supabase)
+        public ProviderConfigService(IAdminSupabaseClient supabase, ILogger<ProviderConfigService> logger)
         {
             _supabase = supabase;
+            _logger = logger;
         }
 
         /// <summary>
@@ -78,8 +81,7 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                // Log error
-                Console.WriteLine($"Error refreshing provider config: {ex.Message}");
+                _logger.LogError(ex, "Error refreshing provider config");
                 // On failure, keep stale cache if available
             }
         }
@@ -126,7 +128,8 @@ namespace DualMind.API.Core.Services
             if (!_keysCache.TryGetValue(providerName, out var keys)) return null;
 
             var candidates = keys.Where(k => k.IsActive &&
-                                             (!k.CooldownUntil.HasValue || k.CooldownUntil.Value < DateTime.UtcNow))
+                                             (!k.CooldownUntil.HasValue || k.CooldownUntil.Value < DateTime.UtcNow) &&
+                                             !string.IsNullOrEmpty(k.ApiKey))
                                  .ToList();
 
             if (triedKeyIds != null && triedKeyIds.Any())
@@ -146,7 +149,7 @@ namespace DualMind.API.Core.Services
             {
                 KeyId = selectedKey.KeyId,
                 ProviderName = providerName,
-                Ticket = selectedKey.ApiKey
+                Ticket = selectedKey.ApiKey!
             };
         }
 
@@ -171,7 +174,7 @@ namespace DualMind.API.Core.Services
                             last_used_at = DateTime.UtcNow,
                             total_calls = key.TotalCalls
                         });
-                    } catch (Exception ex) { Console.WriteLine($"Error updating key success for key {keyId}: {ex.Message}"); }
+                    } catch (Exception ex) { _logger.LogWarning(ex, "Error updating key success for key {KeyId}", keyId); }
                     break;
                 }
             }
@@ -216,7 +219,7 @@ namespace DualMind.API.Core.Services
                             cooldown_until = key.CooldownUntil,
                             last_error_type = key.LastErrorType
                         });
-                    } catch (Exception ex) { Console.WriteLine($"Error updating key failure for key {keyId}: {ex.Message}"); }
+                    } catch (Exception ex) { _logger.LogWarning(ex, "Error updating key failure for key {KeyId}", keyId); }
 
                     break;
                 }

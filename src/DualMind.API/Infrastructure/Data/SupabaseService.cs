@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net;
@@ -16,27 +17,21 @@ namespace DualMind.API.Infrastructure.Data
         private readonly HttpClient _client;
         private readonly string _baseUrl;
         private readonly string _serviceKey;
+        private readonly ILogger<SupabaseService> _logger;
 
-        public SupabaseService(HttpClient client, IOptions<SupabaseSettings> settings)
+        public SupabaseService(HttpClient client, IOptions<SupabaseSettings> settings, ILogger<SupabaseService> logger)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             
             var config = settings.Value;
             _baseUrl = config.Url?.TrimEnd('/');
             _serviceKey = config.ServiceKey ?? config.Key;
 
             if (string.IsNullOrWhiteSpace(_baseUrl))
-                Console.WriteLine("Warning: Supabase URL missing");
+                _logger.LogWarning("Supabase URL missing");
             if (string.IsNullOrWhiteSpace(_serviceKey))
-                Console.WriteLine("Warning: Supabase API key missing");
-
-            // Configure headers if not already present (though ideally HttpClient usage in DI should have this pre-configured or done per request)
-            // But since we are reusing the client, we should check if we can set them here or if we need to set them on request.
-            // Best practice with IHttpClientFactory is to configure the client in Program.cs. 
-            // However, to permit easier transition, we can ensure they are present here or assume Program.cs configured them.
-            // Let's assume Program.cs will configure the BaseAddress and Headers.
-            // BUT, if we use typed client, we can do it here. 
-            // For now, let's keep it safe and manual setting if missing, assuming a fresh client or one configured for this service.
+                _logger.LogWarning("Supabase API key missing");
         }
 
         private string RestUrl => $"{_baseUrl}/rest/v1";

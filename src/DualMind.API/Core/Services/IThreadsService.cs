@@ -9,7 +9,7 @@ namespace DualMind.API.Core.Services
     {
         Task<List<ThreadDto>> GetThreadsAsync(Guid? userId, int limit = 20);
         Task<ThreadDto> CreateThreadAsync(string title, Guid? userId);
-        Task<ThreadDto> GetThreadAsync(Guid threadId);
+        Task<ThreadDto?> GetThreadAsync(Guid threadId);
         Task UpdateThreadAsync(Guid threadId, string title);
         Task DeleteThreadAsync(Guid threadId);
     }

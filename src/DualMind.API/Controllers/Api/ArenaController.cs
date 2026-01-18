@@ -11,11 +11,12 @@ using Newtonsoft.Json;
 using System.Net.Http;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
 
 namespace DualMind.API.Controllers.Api
 {
     [Route("api/arena")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
     public class ArenaController : ControllerBase
     {
         private readonly IModelSelector _modelSelector;
@@ -25,6 +26,7 @@ namespace DualMind.API.Controllers.Api
         private readonly ILeaderboardModelSelector _leaderboardModelSelector;
         private readonly IComparisonLogger _comparisonLogger;
         private readonly IUserSyncService _userSyncService;
+        private readonly ILogger<ArenaController> _logger;
 
         public ArenaController(
             IModelSelector modelSelector,
@@ -33,7 +35,8 @@ namespace DualMind.API.Controllers.Api
             IThreadMessagesService threadMessagesService,
             ILeaderboardModelSelector leaderboardModelSelector,
             IComparisonLogger comparisonLogger,
-            IUserSyncService userSyncService)
+            IUserSyncService userSyncService,
+            ILogger<ArenaController> logger)
         {
             _modelSelector = modelSelector;
             _chatProviderFactory = chatProviderFactory;
@@ -42,6 +45,7 @@ namespace DualMind.API.Controllers.Api
             _leaderboardModelSelector = leaderboardModelSelector;
             _comparisonLogger = comparisonLogger;
             _userSyncService = userSyncService;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -145,13 +149,27 @@ namespace DualMind.API.Controllers.Api
 
                 await _messageLogger.LogMessageAsync(sessionId, finalModel, "single", request, response);
 
+                // 🚨 Ensure public.users row exists before linking messages
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                    
+                    var email = User.FindFirst("email")?.Value 
+                        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+                    var name = User.FindFirst("full_name")?.Value 
+                        ?? User.FindFirst("name")?.Value 
+                        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+                    
+                    await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
+                }
+
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
-                    var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                    // Note: request.ThreadId is string in ChatRequest, existing service might expect Guid or string. Assuming Guid for now based on previous code.
                     if (Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
                     {
-                        await _threadMessagesService.LogSingleAsync(threadIdGuid, request.Prompt, finalModel, response, token);
+                        await _threadMessagesService.LogSingleAsync(threadIdGuid, request.Prompt, finalModel, response);
                     }
                 }
 
@@ -218,8 +236,7 @@ namespace DualMind.API.Controllers.Api
                 {
                     if (string.Equals(request.SelectionMode, "topper", StringComparison.OrdinalIgnoreCase))
                     {
-                        var authToken = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                        var pair = await _leaderboardModelSelector.GetTopperAndRandomModelAsync(authToken);
+                        var pair = await _leaderboardModelSelector.GetTopperAndRandomModelAsync();
                         model1 = pair.model1;
                         model2 = pair.model2;
                         selectionMode = "topper";
@@ -316,29 +333,29 @@ namespace DualMind.API.Controllers.Api
                 await _messageLogger.LogMessageAsync(sessionId, finalModel1, "agent1", request, response1);
                 await _messageLogger.LogMessageAsync(sessionId, finalModel2, "agent2", request, response2);
 
-                var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                
                 // 🚨 Ensure public.users row exists before logging comparison
-                if (HttpContext.Items.ContainsKey("UserId"))
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
                 {
-                    var userId = (Guid)HttpContext.Items["UserId"];
-                    var email = HttpContext.Items.ContainsKey("UserEmail") 
-                        ? HttpContext.Items["UserEmail"]?.ToString() 
-                        : null;
-                    var name = HttpContext.Items.ContainsKey("UserName") 
-                        ? HttpContext.Items["UserName"]?.ToString() 
-                        : null;
+                    userId = parsedId;
                     
-                    await _userSyncService.EnsureUserExistsAsync(userId, email, name);
+                    var email = User.FindFirst("email")?.Value 
+                        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+                    var name = User.FindFirst("full_name")?.Value 
+                        ?? User.FindFirst("name")?.Value 
+                        ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+                    
+                    await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
                 }
                 
-                await _comparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, token);
+                await _comparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, userId);
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
                 {
                     if (Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
                     {
-                        await _threadMessagesService.LogDualAsync(threadIdGuid, request.Prompt, finalModel1, finalModel2, response1, response2, token, comparisonId);
+                        await _threadMessagesService.LogDualAsync(threadIdGuid, request.Prompt, finalModel1, finalModel2, response1, response2, comparisonId);
                     }
                 }
 
@@ -403,14 +420,7 @@ namespace DualMind.API.Controllers.Api
                 }
                 catch (Exception ex)
                 {
-                    // Log the error for debugging
-                    System.Diagnostics.Debug.WriteLine($"DualChat inner error: {ex.Message}");
-                    if (ex.InnerException != null)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
-                    }
-                    System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
-
+                    _logger.LogError(ex, "DualChat inner error");
                     return StatusCode(500, new
                     {
                         @object = "ai.error",
@@ -422,8 +432,7 @@ namespace DualMind.API.Controllers.Api
             }
             catch (Exception outerEx)
             {
-                // Catch any exceptions that occur outside the inner try block
-                System.Diagnostics.Debug.WriteLine($"DualChat outer error: {outerEx.Message}");
+                _logger.LogError(outerEx, "DualChat outer error");
                 return StatusCode(500, new
                 {
                     @object = "ai.error",

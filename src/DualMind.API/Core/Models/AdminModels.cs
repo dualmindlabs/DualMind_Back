@@ -10,13 +10,13 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("full_name")]
-        public string FullName { get; set; }
+        public string? FullName { get; set; }
 
         [JsonProperty("email")]
-        public string Email { get; set; }
+        public string? Email { get; set; }
 
         [JsonProperty("role")]
-        public string Role { get; set; } = "user";
+        public string? Role { get; set; } = "user";
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
@@ -28,25 +28,25 @@ namespace DualMind.API.Core.Models
     public class UserCreateRequest
     {
         [JsonProperty("full_name")]
-        public string FullName { get; set; }
+        public string? FullName { get; set; }
 
         [JsonProperty("email")]
-        public string Email { get; set; }
+        public string? Email { get; set; }
 
         [JsonProperty("role")]
-        public string Role { get; set; } = "user";
+        public string? Role { get; set; } = "user";
     }
 
     public class UserUpdateRequest
     {
         [JsonProperty("full_name")]
-        public string FullName { get; set; }
+        public string? FullName { get; set; }
 
         [JsonProperty("email")]
-        public string Email { get; set; }
+        public string? Email { get; set; }
 
         [JsonProperty("role")]
-        public string Role { get; set; }
+        public string? Role { get; set; }
 
         [JsonProperty("last_login_at")]
         public DateTime? LastLoginAt { get; set; }
@@ -59,19 +59,19 @@ namespace DualMind.API.Core.Models
         public Guid? ModelId { get; set; }
 
         [JsonProperty("model_name")]
-        public string ModelName { get; set; }
+        public string? ModelName { get; set; }
 
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("api_url")]
-        public string ApiUrl { get; set; }
+        public string? ApiUrl { get; set; }
 
         [JsonProperty("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         [JsonProperty("status")]
-        public string Status { get; set; } = "active";
+        public string? Status { get; set; } = "active";
 
         [JsonProperty("created_by")]
         public Guid? CreatedBy { get; set; }
@@ -86,19 +86,19 @@ namespace DualMind.API.Core.Models
     public class AIModelCreateRequest
     {
         [JsonProperty("model_name")]
-        public string ModelName { get; set; }
+        public string? ModelName { get; set; }
 
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("api_url")]
-        public string ApiUrl { get; set; }
+        public string? ApiUrl { get; set; }
 
         [JsonProperty("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         [JsonProperty("status")]
-        public string Status { get; set; } = "active";
+        public string? Status { get; set; } = "active";
 
         [JsonProperty("created_by")]
         public Guid? CreatedBy { get; set; }
@@ -107,19 +107,19 @@ namespace DualMind.API.Core.Models
     public class AIModelUpdateRequest
     {
         [JsonProperty("model_name")]
-        public string ModelName { get; set; }
+        public string? ModelName { get; set; }
 
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("api_url")]
-        public string ApiUrl { get; set; }
+        public string? ApiUrl { get; set; }
 
         [JsonProperty("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         [JsonProperty("status")]
-        public string Status { get; set; }
+        public string? Status { get; set; }
 
         [JsonProperty("updated_at")]
         public DateTime? UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -135,7 +135,7 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        public string? PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }
@@ -144,10 +144,10 @@ namespace DualMind.API.Core.Models
         public Guid? Model2Id { get; set; }
 
         [JsonProperty("model1_response")]
-        public string Model1Response { get; set; }
+        public string? Model1Response { get; set; }
 
         [JsonProperty("model2_response")]
-        public string Model2Response { get; set; }
+        public string? Model2Response { get; set; }
 
         [JsonProperty("model1_time_ms")]
         public int? Model1TimeMs { get; set; }
@@ -200,7 +200,7 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("title")]
-        public string Title { get; set; }
+        public string? Title { get; set; }
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
@@ -212,13 +212,13 @@ namespace DualMind.API.Core.Models
         public Guid? UserId { get; set; }
 
         [JsonProperty("title")]
-        public string Title { get; set; }
+        public string? Title { get; set; }
     }
 
     public class ThreadUpdateRequest
     {
         [JsonProperty("title")]
-        public string Title { get; set; }
+        public string? Title { get; set; }
     }
 
     // Thread Message Models
@@ -231,7 +231,7 @@ namespace DualMind.API.Core.Models
         public Guid? ThreadId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        public string? PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }
@@ -240,10 +240,10 @@ namespace DualMind.API.Core.Models
         public Guid? Model2Id { get; set; }
 
         [JsonProperty("model1_response")]
-        public string Model1Response { get; set; }
+        public string? Model1Response { get; set; }
 
         [JsonProperty("model2_response")]
-        public string Model2Response { get; set; }
+        public string? Model2Response { get; set; }
 
         [JsonProperty("model1_time_ms")]
         public int? Model1TimeMs { get; set; }
@@ -261,7 +261,7 @@ namespace DualMind.API.Core.Models
         public Guid ThreadId { get; set; }
 
         [JsonProperty("prompt_text")]
-        public string PromptText { get; set; }
+        public string? PromptText { get; set; }
 
         [JsonProperty("model1_id")]
         public Guid? Model1Id { get; set; }
@@ -270,10 +270,10 @@ namespace DualMind.API.Core.Models
         public Guid? Model2Id { get; set; }
 
         [JsonProperty("model1_response")]
-        public string Model1Response { get; set; }
+        public string? Model1Response { get; set; }
 
         [JsonProperty("model2_response")]
-        public string Model2Response { get; set; }
+        public string? Model2Response { get; set; }
 
         [JsonProperty("model1_time_ms")]
         public int? Model1TimeMs { get; set; }

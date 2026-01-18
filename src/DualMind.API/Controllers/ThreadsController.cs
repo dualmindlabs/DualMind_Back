@@ -9,7 +9,7 @@ using DualMind.API.Core.Services;
 namespace DualMind.API.Controllers
 {
     [Route("api/threads")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
     public class ThreadsController : ControllerBase
     {
         private readonly IThreadsService _threadsService;
@@ -27,14 +27,22 @@ namespace DualMind.API.Controllers
         }
 
         [HttpGet]
+        [HttpGet]
         [Route("")]
-        public async Task<IActionResult> GetThreads([FromQuery] int limit = 20, [FromQuery] Guid? userId = null)
+        public async Task<IActionResult> GetThreads([FromQuery] int limit = 20)
         {
             try
             {
-                if (!userId.HasValue && HttpContext.Items.ContainsKey("UserId"))
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
                 {
-                    userId = (Guid)HttpContext.Items["UserId"];
+                    userId = parsedId;
+                }
+
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { error = "User ID claim missing" });
                 }
 
                 var threads = await _threadsService.GetThreadsAsync(userId, limit);
@@ -58,24 +66,28 @@ namespace DualMind.API.Controllers
         {
             try
             {
-                Guid? userId = request?.UserId;
-                if (!userId.HasValue && HttpContext.Items.ContainsKey("UserId"))
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
                 {
-                    userId = (Guid)HttpContext.Items["UserId"];
+                    userId = parsedId;
+                }
+
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { error = "User ID claim missing" });
                 }
 
                 // 🚨 BLOCKER FIX: Ensure public.users row exists before creating thread
-                if (userId.HasValue)
-                {
-                    var email = HttpContext.Items.ContainsKey("UserEmail") 
-                        ? HttpContext.Items["UserEmail"]?.ToString() 
-                        : null;
-                    var name = HttpContext.Items.ContainsKey("UserName") 
-                        ? HttpContext.Items["UserName"]?.ToString() 
-                        : null;
+                // Extract email/name from claims if available
+                var email = User.FindFirst("email")?.Value 
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
                     
-                    await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
-                }
+                var name = User.FindFirst("full_name")?.Value 
+                    ?? User.FindFirst("name")?.Value 
+                    ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+                
+                await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
 
                 var thread = await _threadsService.CreateThreadAsync(request?.Title, userId);
 
@@ -124,8 +136,7 @@ namespace DualMind.API.Controllers
         {
             try
             {
-                var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId, token);
+                var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId);
 
                 return Ok(new { items = messages });
             }

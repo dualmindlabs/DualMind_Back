@@ -1,9 +1,8 @@
 using System;
 using System.Net.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using DualMind.API.AI.Contracts;
@@ -16,13 +15,14 @@ namespace DualMind.API.AI.Providers
         private readonly HttpClient _client;
         private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
+        private readonly ILogger<BytezService> _logger;
         private const string BytezApiUrl = "https://api.bytez.com/v1/chat/completions";
 
-        public BytezService(Core.Services.IProviderConfigService config)
+        public BytezService(HttpClient client, Core.Services.IProviderConfigService config, ILogger<BytezService> logger)
         {
-            _client = new HttpClient();
-            _client.Timeout = TimeSpan.FromSeconds(300); // Higher timeout for Bytez
-            _config = config;
+            _client = client ?? throw new ArgumentNullException(nameof(client));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _classifier = new Core.Services.ProviderErrorClassifier();
         }
 

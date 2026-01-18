@@ -1,9 +1,8 @@
 using System;
 using System.Net.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using DualMind.API.AI.Contracts;
@@ -16,16 +15,18 @@ namespace DualMind.API.AI.Providers
         private readonly HttpClient _client;
         private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
+        private readonly ILogger<GroqService> _logger;
         private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
         private const string GroqSpeechApiUrl = "https://api.groq.com/openai/v1/audio/speech";
 
         // Environment variable API key (for local .env or Azure secrets)
-        private readonly string _envApiKey;
+        private readonly string? _envApiKey;
 
-        public GroqService(Core.Services.IProviderConfigService config)
+        public GroqService(HttpClient client, Core.Services.IProviderConfigService config, ILogger<GroqService> logger)
         {
-            _client = new HttpClient();
-            _config = config;
+            _client = client ?? throw new ArgumentNullException(nameof(client));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _classifier = new Core.Services.ProviderErrorClassifier();
 
             // Check for GROQ_API_KEY in environment variables first (from .env or Azure secrets)
@@ -33,11 +34,11 @@ namespace DualMind.API.AI.Providers
 
             if (!string.IsNullOrEmpty(_envApiKey))
             {
-                System.Diagnostics.Debug.WriteLine("GroqService: Using API key from environment variable (GROQ_API_KEY)");
+                _logger.LogInformation("GroqService: Using API key from environment variable (GROQ_API_KEY)");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine("GroqService: No GROQ_API_KEY found in environment, will use database keys");
+                _logger.LogInformation("GroqService: No GROQ_API_KEY found in environment, will use database keys");
             }
         }
 
@@ -58,7 +59,7 @@ namespace DualMind.API.AI.Providers
 
                     if (errorType == Core.Services.ProviderErrorType.Auth)
                     {
-                        System.Diagnostics.Debug.WriteLine($"GroqService: Environment API key failed with auth error: {ex.Message}");
+                        _logger.LogError(ex, "GroqService: Environment API key failed with auth error");
                         throw new Exception($"Groq API authentication failed. Please check your GROQ_API_KEY environment variable.", ex);
                     }
 

@@ -8,8 +8,8 @@ namespace DualMind.API.Core.Services
 {
     public interface IThreadMessagesService
     {
-        Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response, string token);
-        Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, string token, Guid? comparisonId = null);
-        Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId, string token);
+        Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response);
+        Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, Guid? comparisonId = null);
+        Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId);
     }
 }

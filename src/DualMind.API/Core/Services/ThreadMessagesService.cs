@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 using DualMind.API.AI.Contracts;
@@ -11,13 +12,15 @@ namespace DualMind.API.Core.Services
     public class ThreadMessagesService : IThreadMessagesService
     {
         private readonly ISupabaseService _supabase;
+        private readonly ILogger<ThreadMessagesService> _logger;
         
-        public ThreadMessagesService(ISupabaseService supabase)
+        public ThreadMessagesService(ISupabaseService supabase, ILogger<ThreadMessagesService> logger)
         {
             _supabase = supabase;
+            _logger = logger;
         }
 
-        public async Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response, string token)
+        public async Task LogSingleAsync(Guid threadId, string prompt, string modelName, ChatResponse response)
         {
             try
             {
@@ -36,11 +39,11 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to log single message: {ex.Message}");
+                _logger.LogError(ex, "Failed to log single message");
             }
         }
 
-        public async Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, string token, Guid? comparisonId = null)
+        public async Task LogDualAsync(Guid threadId, string prompt, string model1Name, string model2Name, ChatResponse response1, ChatResponse response2, Guid? comparisonId = null)
         {
             try
             {
@@ -64,11 +67,11 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to log dual message: {ex.Message}");
+                _logger.LogError(ex, "Failed to log dual message");
             }
         }
 
-        public async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId, string token)
+        public async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId)
         {
             try
             {
@@ -143,7 +146,7 @@ namespace DualMind.API.Core.Services
                             }
                             catch (Exception ex)
                             {
-                                System.Diagnostics.Debug.WriteLine($"Error fetching votes for comparison {comparisonId}: {ex.Message}");
+                                _logger.LogWarning(ex, "Error fetching votes for comparison {ComparisonId}", comparisonId);
                             }
                         }
                     }
@@ -167,7 +170,7 @@ namespace DualMind.API.Core.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to get thread messages: {ex.Message}");
+                _logger.LogError(ex, "Failed to get thread messages");
                 return new List<ThreadMessageDto>();
             }
         }

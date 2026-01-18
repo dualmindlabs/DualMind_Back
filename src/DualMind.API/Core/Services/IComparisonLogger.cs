@@ -6,6 +6,6 @@ namespace DualMind.API.Core.Services
 {
     public interface IComparisonLogger
     {
-        Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, string token);
+        Task LogComparisonAsync(Guid comparisonId, ChatRequest request, ChatResponse response1, ChatResponse response2, Guid? userId);
     }
 }

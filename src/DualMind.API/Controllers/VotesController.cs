@@ -9,7 +9,7 @@ using DualMind.API.Core.Services;
 namespace DualMind.API.Controllers
 {
     [Route("api/arena")]
-    [DualMind.API.Filters.SupabaseAuth]
+    [Authorize]
     public class VotesController : ControllerBase
     {
         private readonly IModelStatsService _modelStatsService;
@@ -46,9 +46,13 @@ namespace DualMind.API.Controllers
             try
             {
                 Guid? userId = request.UserId;
-                if (!userId.HasValue && HttpContext.Items.ContainsKey("UserId"))
+                if (!userId.HasValue)
                 {
-                    userId = (Guid)HttpContext.Items["UserId"];
+                    var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (Guid.TryParse(sub, out var parsedId))
+                    {
+                        userId = parsedId;
+                    }
                 }
 
                 // NEW: Handle voteChoice enum -> winner model logic

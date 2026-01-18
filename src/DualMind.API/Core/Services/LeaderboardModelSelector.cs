@@ -17,7 +17,7 @@ namespace DualMind.API.Core.Services
             _modelSelector = modelSelector;
         }
 
-        public async Task<(string model1, string model2)> GetTopperAndRandomModelAsync(string token)
+        public async Task<(string model1, string model2)> GetTopperAndRandomModelAsync()
         {
             try
             {

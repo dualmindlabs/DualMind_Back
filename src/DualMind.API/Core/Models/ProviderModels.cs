@@ -7,10 +7,10 @@ namespace DualMind.API.Core.Models
     public class Provider
     {
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("display_name")]
-        public string DisplayName { get; set; }
+        public string? DisplayName { get; set; }
 
         [JsonProperty("is_enabled")]
         public bool IsEnabled { get; set; }
@@ -32,10 +32,10 @@ namespace DualMind.API.Core.Models
     public class ProviderCreateRequest
     {
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("display_name")]
-        public string DisplayName { get; set; }
+        public string? DisplayName { get; set; }
 
         [JsonProperty("is_enabled")]
         public bool IsEnabled { get; set; } = true;
@@ -47,7 +47,7 @@ namespace DualMind.API.Core.Models
     public class ProviderUpdateRequest
     {
         [JsonProperty("display_name")]
-        public string DisplayName { get; set; }
+        public string? DisplayName { get; set; }
 
         [JsonProperty("is_enabled")]
         public bool IsEnabled { get; set; }
@@ -62,13 +62,13 @@ namespace DualMind.API.Core.Models
         public Guid KeyId { get; set; }
 
         [JsonProperty("provider_name")]
-        public string ProviderName { get; set; }
+        public string? ProviderName { get; set; }
 
         [JsonProperty("api_key")]
-        public string ApiKey { get; set; }
+        public string? ApiKey { get; set; }
 
         [JsonProperty("display_mask")]
-        public string DisplayMask { get; set; }
+        public string? DisplayMask { get; set; }
 
         [JsonProperty("is_active")]
         public bool IsActive { get; set; }
@@ -83,10 +83,10 @@ namespace DualMind.API.Core.Models
         public DateTime? LastUsedAt { get; set; }
 
         [JsonProperty("last_error_type")]
-        public string LastErrorType { get; set; } = string.Empty;
+        public string? LastErrorType { get; set; } = string.Empty;
 
         [JsonProperty("last_error_category")]
-        public string LastErrorCategory { get; set; } = string.Empty;
+        public string? LastErrorCategory { get; set; } = string.Empty;
 
         [JsonProperty("cooldown_until")]
         public DateTime? CooldownUntil { get; set; }
@@ -104,7 +104,7 @@ namespace DualMind.API.Core.Models
     public class ProviderApiKeyCreateRequest
     {
         [JsonProperty("api_key")]
-        public string ApiKey { get; set; }
+        public string? ApiKey { get; set; }
 
         [JsonProperty("is_active")]
         public bool IsActive { get; set; } = true;
