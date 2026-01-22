@@ -11,6 +11,7 @@ namespace DualMind.API.Core.Services
         Task<ThreadDto> CreateThreadAsync(string title, Guid? userId);
         Task<ThreadDto?> GetThreadAsync(Guid threadId);
         Task UpdateThreadAsync(Guid threadId, string title);
+        Task UpdateThreadVisibilityAsync(Guid threadId, string visibility);
         Task DeleteThreadAsync(Guid threadId);
     }
 }

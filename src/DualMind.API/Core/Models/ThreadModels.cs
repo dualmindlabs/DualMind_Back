@@ -13,7 +13,19 @@ namespace DualMind.API.Core.Models
         public Guid ThreadId { get; set; }
         public Guid? UserId { get; set; }
         public string? Title { get; set; }
+        /// <summary>
+        /// Thread visibility: "private", "public", or "unlisted"
+        /// </summary>
+        public string Visibility { get; set; } = "private";
         public DateTime CreatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Request to update thread visibility
+    /// </summary>
+    public class UpdateThreadVisibilityRequest
+    {
+        public string Visibility { get; set; }
     }
 
     public class ThreadMessageDto

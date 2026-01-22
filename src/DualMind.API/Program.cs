@@ -177,6 +177,7 @@ builder.Services.AddScoped<DualMind.API.Core.Services.ILeaderboardModelSelector,
 builder.Services.AddScoped<DualMind.API.Core.Services.IComparisonLogger, DualMind.API.Core.Services.ComparisonLogger>();
 builder.Services.AddScoped<DualMind.API.Core.Services.IMessageLogger, DualMind.API.Core.Services.MessageLogger>();
 builder.Services.AddScoped<DualMind.API.Core.Services.IUserSyncService, DualMind.API.Core.Services.UserSyncService>();
+builder.Services.AddScoped<DualMind.API.Core.Services.ISystemSettingsService, DualMind.API.Core.Services.SystemSettingsService>();
 
 // Register Admin Services
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.IAdminSupabaseClient, DualMind.API.Infrastructure.Data.AdminSupabaseClient>();

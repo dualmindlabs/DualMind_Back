@@ -25,22 +25,10 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                // Check if user already exists in public.users
-                var existing = await _supabase.SelectAsync<JObject>(
-                    "users",
-                    "user_id",
-                    $"user_id=eq.{authUserId}"
-                );
-
-                if (existing != null && existing.Count > 0)
-                {
-                    // User already exists
-                    return;
-                }
-
                 var safeEmail = email ?? $"user_{authUserId}@placeholder.com";
                 
-                // Create user row in public.users
+                // Create/Update user row in public.users using Upsert
+                // This handles race conditions where a DB trigger might have already inserted the user
                 var user = new
                 {
                     user_id = authUserId,
@@ -48,17 +36,16 @@ namespace DualMind.API.Core.Services
                     full_name = string.IsNullOrWhiteSpace(fullName)
                         ? safeEmail.Split('@')[0] // Fallback to email prefix
                         : fullName,
-                    role = "user",
-                    created_at = DateTime.UtcNow
+                    role = "user"
+                    // created_at = DateTime.UtcNow // Exclude created_at from upsert to preserve original value
                 };
 
-                await _supabase.InsertAsync<object>("users", user);
-                _logger.LogInformation("Created public.users row for {UserId} ({Email})", authUserId, safeEmail);
+                await _supabase.UpsertAsync<object>("users", user);
+                _logger.LogInformation("Synced public.users row for {UserId} ({Email}) via Upsert", authUserId, safeEmail);
             }
             catch (Exception ex)
             {
-                // Log but don't fail the request if user creation fails
-                // The FK constraint will still prevent thread creation if this fails
+                // Log but don't fail the request if user sync fails
                 _logger.LogWarning(ex, "Failed to sync user to public.users");
             }
         }

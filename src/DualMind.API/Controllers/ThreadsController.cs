@@ -15,18 +15,20 @@ namespace DualMind.API.Controllers
         private readonly IThreadsService _threadsService;
         private readonly IThreadMessagesService _threadMessagesService;
         private readonly IUserSyncService _userSyncService;
+        private readonly ISystemSettingsService _systemSettingsService;
 
         public ThreadsController(
             IThreadsService threadsService, 
             IThreadMessagesService threadMessagesService,
-            IUserSyncService userSyncService)
+            IUserSyncService userSyncService,
+            ISystemSettingsService systemSettingsService)
         {
             _threadsService = threadsService;
             _threadMessagesService = threadMessagesService;
             _userSyncService = userSyncService;
+            _systemSettingsService = systemSettingsService;
         }
 
-        [HttpGet]
         [HttpGet]
         [Route("")]
         public async Task<IActionResult> GetThreads([FromQuery] int limit = 20)
@@ -104,8 +106,14 @@ namespace DualMind.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Get a single thread by ID.
+        /// Supports public sharing: if public_sharing feature flag is enabled AND thread visibility is public/unlisted,
+        /// the endpoint will return the thread without requiring authentication.
+        /// </summary>
         [HttpGet]
         [Route("{threadId:guid}")]
+        [AllowAnonymous] // Allow both authenticated and anonymous requests
         public async Task<IActionResult> GetThread(Guid threadId)
         {
             try
@@ -114,7 +122,58 @@ namespace DualMind.API.Controllers
 
                 if (thread == null)
                 {
-                    return NotFound();
+                    return NotFound(new
+                    {
+                        success = false,
+                        error = "Thread not found",
+                        code = "NOT_FOUND"
+                    });
+                }
+
+                // Check if public sharing is enabled
+                var publicSharingEnabled = await _systemSettingsService.GetFeatureFlagAsync("public_sharing");
+
+                // Determine if user is authenticated
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                }
+
+                var isAuthenticated = User.Identity?.IsAuthenticated == true && userId.HasValue;
+
+                // PUBLIC SHARING LOGIC:
+                // If public_sharing is enabled AND visibility is public/unlisted → allow access without auth
+                // Otherwise → require auth and user_id match (for private threads)
+                
+                if (publicSharingEnabled && 
+                    (thread.Visibility == "public" || thread.Visibility == "unlisted"))
+                {
+                    // Public/unlisted thread with feature enabled - allow access
+                    return Ok(thread);
+                }
+
+                // For private threads OR when public_sharing is disabled, require authentication
+                if (!isAuthenticated)
+                {
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        error = "Authentication required to access this thread",
+                        code = "UNAUTHORIZED"
+                    });
+                }
+
+                // For private threads, verify ownership
+                if (thread.Visibility == "private" && thread.UserId != userId)
+                {
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        error = "You do not have access to this thread",
+                        code = "FORBIDDEN"
+                    });
                 }
 
                 return Ok(thread);
@@ -130,12 +189,65 @@ namespace DualMind.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Get messages for a thread.
+        /// Supports public sharing: follows the same rules as GetThread for public/unlisted threads.
+        /// </summary>
         [HttpGet]
         [Route("{threadId:guid}/messages")]
+        [AllowAnonymous] // Allow both authenticated and anonymous requests
         public async Task<IActionResult> GetThreadMessages(Guid threadId)
         {
             try
             {
+                // First check thread access (same logic as GetThread)
+                var thread = await _threadsService.GetThreadAsync(threadId);
+
+                if (thread == null)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        error = "Thread not found",
+                        code = "NOT_FOUND"
+                    });
+                }
+
+                var publicSharingEnabled = await _systemSettingsService.GetFeatureFlagAsync("public_sharing");
+
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                }
+
+                var isAuthenticated = User.Identity?.IsAuthenticated == true && userId.HasValue;
+
+                // Check access permissions
+                if (!(publicSharingEnabled && (thread.Visibility == "public" || thread.Visibility == "unlisted")))
+                {
+                    if (!isAuthenticated)
+                    {
+                        return Unauthorized(new
+                        {
+                            success = false,
+                            error = "Authentication required to access this thread",
+                            code = "UNAUTHORIZED"
+                        });
+                    }
+
+                    if (thread.Visibility == "private" && thread.UserId != userId)
+                    {
+                        return StatusCode(403, new
+                        {
+                            success = false,
+                            error = "You do not have access to this thread",
+                            code = "FORBIDDEN"
+                        });
+                    }
+                }
+
                 var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId);
 
                 return Ok(new { items = messages });
@@ -151,12 +263,45 @@ namespace DualMind.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Update thread title. Requires authentication and ownership.
+        /// </summary>
         [HttpPatch]
         [Route("{threadId:guid}")]
         public async Task<IActionResult> UpdateThread(Guid threadId, [FromBody] UpdateThreadRequest request)
         {
             try
             {
+                // Get user ID from token
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                }
+
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { error = "User ID claim missing" });
+                }
+
+                // Verify ownership
+                var thread = await _threadsService.GetThreadAsync(threadId);
+                if (thread == null)
+                {
+                    return NotFound(new { success = false, error = "Thread not found", code = "NOT_FOUND" });
+                }
+
+                if (thread.UserId != userId)
+                {
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        error = "You do not have permission to update this thread",
+                        code = "FORBIDDEN"
+                    });
+                }
+
                 if (string.IsNullOrWhiteSpace(request?.Title))
                 {
                     return BadRequest(new
@@ -186,12 +331,130 @@ namespace DualMind.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Update thread visibility. Requires authentication and ownership.
+        /// Only the thread owner can change visibility.
+        /// </summary>
+        [HttpPatch]
+        [Route("{threadId:guid}/visibility")]
+        public async Task<IActionResult> UpdateThreadVisibility(Guid threadId, [FromBody] UpdateThreadVisibilityRequest request)
+        {
+            try
+            {
+                // Get user ID from token
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                }
+
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { error = "User ID claim missing" });
+                }
+
+                // Verify thread exists
+                var thread = await _threadsService.GetThreadAsync(threadId);
+                if (thread == null)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        error = "Thread not found",
+                        code = "NOT_FOUND"
+                    });
+                }
+
+                // Verify ownership - only the owner can change visibility
+                if (thread.UserId != userId)
+                {
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        error = "Only the thread owner can change visibility",
+                        code = "FORBIDDEN"
+                    });
+                }
+
+                // Validate visibility value
+                if (string.IsNullOrWhiteSpace(request?.Visibility))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "Visibility is required",
+                        code = "INVALID_REQUEST"
+                    });
+                }
+
+                var validVisibilities = new[] { "private", "public", "unlisted" };
+                if (!Array.Exists(validVisibilities, v => v == request.Visibility.ToLowerInvariant()))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = $"Invalid visibility. Must be one of: {string.Join(", ", validVisibilities)}",
+                        code = "INVALID_REQUEST"
+                    });
+                }
+
+                await _threadsService.UpdateThreadVisibilityAsync(threadId, request.Visibility);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Thread visibility updated successfully",
+                    visibility = request.Visibility.ToLowerInvariant()
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    code = "VISIBILITY_UPDATE_ERROR"
+                });
+            }
+        }
+
         [HttpDelete]
         [Route("{threadId:guid}")]
         public async Task<IActionResult> DeleteThread(Guid threadId)
         {
             try
             {
+                // Get user ID from token
+                Guid? userId = null;
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var parsedId))
+                {
+                    userId = parsedId;
+                }
+
+                if (!userId.HasValue)
+                {
+                    return Unauthorized(new { error = "User ID claim missing" });
+                }
+
+                // Verify ownership
+                var thread = await _threadsService.GetThreadAsync(threadId);
+                if (thread == null)
+                {
+                    return NotFound(new { success = false, error = "Thread not found", code = "NOT_FOUND" });
+                }
+
+                if (thread.UserId != userId)
+                {
+                    return StatusCode(403, new
+                    {
+                        success = false,
+                        error = "You do not have permission to delete this thread",
+                        code = "FORBIDDEN"
+                    });
+                }
+
                 await _threadsService.DeleteThreadAsync(threadId);
 
                 return Ok(new

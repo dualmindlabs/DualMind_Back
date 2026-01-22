@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DualMind.API.Core.Models;
@@ -27,7 +28,7 @@ namespace DualMind.API.Core.Services
                 filter = $"user_id=eq.{userId.Value}&" + filter;
             }
 
-            var threads = await _supabase.SelectAsync<JObject>("threads", "thread_id,user_id,title,created_at", filter);
+            var threads = await _supabase.SelectAsync<JObject>("threads", "thread_id,user_id,title,visibility,created_at", filter);
 
             var result = new List<ThreadDto>();
             foreach (var t in threads)
@@ -37,6 +38,7 @@ namespace DualMind.API.Core.Services
                     ThreadId = Guid.Parse(t["thread_id"].ToString()),
                     UserId = t["user_id"] != null && t["user_id"].Type != JTokenType.Null ? Guid.Parse(t["user_id"].ToString()) : (Guid?)null,
                     Title = t["title"]?.ToString(),
+                    Visibility = t["visibility"]?.ToString() ?? "private",
                     CreatedAt = DateTime.Parse(t["created_at"].ToString())
                 });
             }
@@ -59,6 +61,7 @@ namespace DualMind.API.Core.Services
                 ThreadId = Guid.Parse(inserted["thread_id"].ToString()),
                 UserId = inserted["user_id"] != null && inserted["user_id"].Type != JTokenType.Null ? Guid.Parse(inserted["user_id"].ToString()) : (Guid?)null,
                 Title = inserted["title"]?.ToString(),
+                Visibility = inserted["visibility"]?.ToString() ?? "private",
                 CreatedAt = DateTime.Parse(inserted["created_at"].ToString())
             };
         }
@@ -75,12 +78,26 @@ namespace DualMind.API.Core.Services
                 ThreadId = Guid.Parse(t["thread_id"].ToString()),
                 UserId = t["user_id"] != null && t["user_id"].Type != JTokenType.Null ? Guid.Parse(t["user_id"].ToString()) : (Guid?)null,
                 Title = t["title"]?.ToString(),
+                Visibility = t["visibility"]?.ToString() ?? "private",
                 CreatedAt = DateTime.Parse(t["created_at"].ToString())
             };
         }
         public async Task UpdateThreadAsync(Guid threadId, string title)
         {
             var updateData = new { title = title };
+            await _supabase.UpdateAsync<JObject>("threads", updateData, $"thread_id=eq.{threadId}");
+        }
+
+        public async Task UpdateThreadVisibilityAsync(Guid threadId, string visibility)
+        {
+            // Validate visibility value
+            var validVisibilities = new[] { "private", "public", "unlisted" };
+            if (!validVisibilities.Contains(visibility.ToLowerInvariant()))
+            {
+                throw new ArgumentException($"Invalid visibility value. Must be one of: {string.Join(", ", validVisibilities)}");
+            }
+
+            var updateData = new { visibility = visibility.ToLowerInvariant() };
             await _supabase.UpdateAsync<JObject>("threads", updateData, $"thread_id=eq.{threadId}");
         }
 
