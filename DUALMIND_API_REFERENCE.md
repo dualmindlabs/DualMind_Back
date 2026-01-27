@@ -3,7 +3,7 @@
 > **🤖 AI-Optimized Documentation**  
 > This documentation is designed for AI coding agents (Lovable, Cursor, Copilot), frontend developers, and autonomous systems.
 
-**Production URL:** `https://api.dualmind.ai`  
+**Production URL:** `https://api.dualmindlab.tech`  
 **Local Development:** `http://localhost:5000`  
 **Swagger UI:** `/swagger`
 

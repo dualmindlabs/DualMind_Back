@@ -1,0 +1,208 @@
+# 🎯 PERFECT PROMPT FOR ANTIGRAVITY IDE
+
+Copy this ENTIRE prompt and paste it into Antigravity IDE:
+
+---
+
+I need you to fix and rebuild my DualMind Arena to work perfectly like yup.ai. My previous AI assistant (Verdant) broke the UI and made it overcomplicated. I need a clean, working arena with smooth streaming.
+
+## 🎯 GOAL
+Build a side-by-side AI model comparison arena (Blind Battle mode) that:
+- Works like yup.ai (smooth, fast, clean)
+- Has real-time streaming responses
+- Shows two AI responses side-by-side
+- Lets users vote for the better response
+- Reveals model names after voting
+- Has zero lag, perfect performance
+
+## 📁 PROJECT STRUCTURE
+
+My project uses:
+- **Next.js 16** (App Router)
+- **React 19**
+- **Tailwind CSS 4**
+- **TypeScript**
+- **Shadcn UI components** (already installed in `components/ui/`)
+
+## 🔴 CURRENT PROBLEMS
+
+1. Verdant created too many complex files (skeletons, error-states, etc.)
+2. UI is broken and doesn't look clean
+3. Components are overcomplicated
+4. Need to simplify everything
+
+## ✅ WHAT I NEED YOU TO DO
+
+### PHASE 1 - ANALYZE & CLEAN UP
+1. Examine my current codebase structure
+2. Identify broken/overcomplicated files
+3. Show me which files to delete
+4. Show me which files to keep
+
+### PHASE 2 - BUILD SIMPLE ARENA
+Create these core files:
+
+**1. Main Arena Page**: `app/arena/page.tsx`
+- Simple layout
+- Shows title "DualMind Arena"
+- Includes the battle component
+
+**2. Battle Component**: `components/dualmind/simple-blind-battle.tsx`
+Must have:
+- Prompt input (textarea)
+- "Battle!" submit button
+- Two response cards side-by-side (Model A and Model B)
+- Real-time streaming text (smooth, no lag)
+- Vote buttons (appear after both responses complete)
+- "Tie" option
+- Model names revealed after vote
+- "Next Battle" button
+- Clean, yup.ai-style design
+
+**3. API Route**: `app/api/arena/blind-battle/route.ts`
+- Handles POST request with prompt
+- Connects to DualMind API (I'll provide details)
+- Returns two responses
+- For now, use mock data so we can test
+
+**4. Streaming Component**: Create a component for smooth token-by-token streaming
+- Uses `useRef` for performance (no re-renders per token)
+- Batches updates with `requestAnimationFrame`
+- Shows blinking cursor during streaming
+- Target: 60fps smooth rendering
+
+### PHASE 3 - STYLING
+Make it look like yup.ai:
+- Clean white background (dark mode support)
+- Two equal-width columns for responses
+- Big, obvious vote buttons
+- Nice hover effects
+- Smooth animations
+- Mobile responsive
+- No clutter, minimalist design
+
+### PHASE 4 - TESTING & POLISH
+- Ensure no TypeScript errors
+- Test streaming performance
+- Verify mobile responsiveness
+- Check dark mode
+- Add keyboard shortcuts (Enter to submit, 1/2 to vote)
+
+## 📋 SPECIFIC REQUIREMENTS
+
+### Streaming Implementation
+```typescript
+// Use this pattern for smooth streaming:
+- Store text in useRef (bufferRef)
+- Batch updates with requestAnimationFrame
+- Update React state every 50-100ms (not every token)
+- Show animated cursor during streaming
+- Target: <16ms per frame (60fps)
+```
+
+### Response Card Features
+Each card should show:
+- Model label ("Model A" or actual name after vote)
+- Streaming text with cursor
+- Vote button (enabled after streaming completes)
+- Winner indicator (green border + checkmark)
+
+### Vote Flow
+1. Both responses stream simultaneously
+2. After both complete → Enable vote buttons
+3. User clicks vote → Submit to backend
+4. Reveal model names
+5. Highlight winner with green border
+6. Show "Next Battle" button
+
+## 🔌 MY DUALMIND API
+
+Connection details:
+- Base URL: `process.env.NEXT_PUBLIC_DUALMIND_API_URL`
+- Auth: `process.env.DUALMIND_API_KEY`
+- Endpoint: `/api/blind-battle` (POST)
+- Request body: `{ prompt: string }`
+- Response: `{ battleId, response1: {...}, response2: {...} }`
+
+**For now**: Use mock responses so we can test the UI. I'll connect the real API later.
+
+## 🎨 DESIGN INSPIRATION (yup.ai style)
+
+Key features to copy:
+1. **Clean layout** - Lots of whitespace
+2. **Two equal columns** - Perfect side-by-side comparison
+3. **Smooth streaming** - Text appears instantly, no lag
+4. **Big vote buttons** - Easy to click
+5. **Minimal UI** - No unnecessary elements
+6. **Fast** - Everything loads instantly
+7. **Mobile-friendly** - Works perfectly on phone
+
+## ⚠️ IMPORTANT RULES
+
+1. **Keep it SIMPLE** - Don't overcomplicate like Verdant did
+2. **One component per file** - Clean separation
+3. **Use existing UI components** - Leverage shadcn components I already have
+4. **Performance first** - Smooth 60fps streaming is critical
+5. **Test as you build** - Make sure each piece works before moving on
+6. **Mobile-first** - Design for mobile, enhance for desktop
+
+## 🎯 SUCCESS CRITERIA
+
+The arena is "done" when:
+- [ ] Page loads with no errors
+- [ ] Can type prompt and submit
+- [ ] Both responses stream smoothly (60fps)
+- [ ] Vote buttons work
+- [ ] Model names reveal after vote
+- [ ] "Next Battle" resets everything
+- [ ] Looks clean (like yup.ai)
+- [ ] Works on mobile
+- [ ] No TypeScript errors
+- [ ] No console errors
+
+## 📦 FILES YOU SHOULD CREATE
+
+1. `app/arena/page.tsx` - Main page
+2. `components/dualmind/simple-blind-battle.tsx` - Main component
+3. `components/dualmind/response-card.tsx` - Individual response display
+4. `components/dualmind/streaming-text.tsx` - Smooth streaming renderer
+5. `app/api/arena/blind-battle/route.ts` - API handler
+6. `hooks/use-arena-stream.ts` - Streaming hook (if needed)
+
+## 🚀 START HERE
+
+Please start by:
+1. Analyzing my current file structure (show me what exists)
+2. Tell me which files to delete (broken stuff from Verdant)
+3. Show me a plan of what you'll build
+4. Then start building one file at a time
+5. Test each component before moving to the next
+
+## 💬 COMMUNICATION STYLE
+
+- **Show me the code** - Don't just explain, give me actual files
+- **One step at a time** - Build and test incrementally
+- **Ask questions** - If something is unclear about my setup, ask
+- **Be specific** - Tell me exactly which folder to put each file
+
+## 🔧 MY ENVIRONMENT
+
+- IDE: Antigravity IDE by Google
+- Skills installed: antigravityskills repo (so you can use advanced features)
+- Node version: Latest
+- Package manager: npm
+
+---
+
+## 🎬 LET'S START!
+
+First, please:
+1. Examine my project structure (look at app/, components/, lib/ folders)
+2. Show me what files currently exist
+3. Give me a cleanup plan (what to delete)
+4. Then we'll build the new arena step by step
+
+Ready? Let's make this arena PERFECT! 🚀
+
+---
+
