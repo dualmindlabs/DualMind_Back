@@ -24,10 +24,10 @@ jobs:
           dotnet-version: '8.x'
 
       - name: Build with dotnet
-        run: dotnet build src/DualMind.API/DualMind.API.csproj --configuration Release
+        run: dotnet build DualMind.sln --configuration Release
 
-      - name: dotnet publish
-        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+      - name: Restore
+        run: dotnet restore DualMind.sln -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
