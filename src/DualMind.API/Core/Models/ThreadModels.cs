@@ -42,6 +42,7 @@ namespace DualMind.API.Core.Models
         public string? WinnerModelName { get; set; }
         public Guid? ComparisonId { get; set; }
         public string? VoteChoice { get; set; }
+        public bool HasVoted { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

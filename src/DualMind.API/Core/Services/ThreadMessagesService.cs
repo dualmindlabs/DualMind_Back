@@ -71,7 +71,7 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId)
+        public async Task<List<ThreadMessageDto>> GetThreadMessagesAsync(Guid threadId, Guid? userId = null)
         {
             try
             {
@@ -104,18 +104,19 @@ namespace DualMind.API.Core.Services
                         {
                             dto.ComparisonId = comparisonId;
                             
-                            // Fetch vote for this comparison if it exists
+                            // Fetch vote for this comparison BY REQUESTING USER
                             try 
                             {
-                                var votes = await _supabase.SelectAsync<JObject>("model_votes", "winner_model_id", $"comparison_id=eq.{comparisonId}");
+                                string voteFilter = $"comparison_id=eq.{comparisonId}";
+                                if (userId.HasValue)
+                                {
+                                    voteFilter += $"&user_id=eq.{userId.Value}";
+                                }
+                                
+                                var votes = await _supabase.SelectAsync<JObject>("model_votes", "winner_model_id,vote_choice", voteFilter);
                                 if (votes != null && votes.Count > 0)
                                 {
                                     // Determine vote choice based on votes found
-                                    // Logic must match ModelStatsService.RecordVoteByChoiceAsync:
-                                    // - tie: 2 rows (one for each model)
-                                    // - both-bad: 1 row (winner_model_id is null)
-                                    // - left/right: 1 row (winner matching model1 or model2)
-                                    
                                     bool hasM1 = false;
                                     bool hasM2 = false;
                                     bool hasNull = false;
@@ -142,11 +143,19 @@ namespace DualMind.API.Core.Services
                                     else if (hasNull) dto.VoteChoice = "both-bad";
                                     else if (hasM1) dto.VoteChoice = "left";
                                     else if (hasM2) dto.VoteChoice = "right";
+                                    
+                                    dto.HasVoted = true;
+                                }
+                                else
+                                {
+                                    // No vote found for this user - mark as not voted
+                                    dto.HasVoted = false;
                                 }
                             }
                             catch (Exception ex)
                             {
                                 _logger.LogWarning(ex, "Error fetching votes for comparison {ComparisonId}", comparisonId);
+                                dto.HasVoted = false;
                             }
                         }
                     }
@@ -196,10 +205,21 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                var models = await _supabase.SelectAsync<JObject>("ai_models", "model_name", $"model_id=eq.{modelId}");
+                // Fetch from description field instead of model_name
+                var models = await _supabase.SelectAsync<JObject>("ai_models", "description", $"model_id=eq.{modelId}");
                 if (models != null && models.Count > 0)
                 {
-                    return models[0]["model_name"]?.ToString();
+                    var description = models[0]["description"]?.ToString();
+                    // Extract name till - (everything before the first dash)
+                    if (!string.IsNullOrEmpty(description))
+                    {
+                        var dashIndex = description.IndexOf('-');
+                        if (dashIndex > 0)
+                        {
+                            return description.Substring(0, dashIndex).Trim();
+                        }
+                        return description.Trim();
+                    }
                 }
             }
             catch { }

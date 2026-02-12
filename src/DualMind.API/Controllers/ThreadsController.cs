@@ -248,7 +248,7 @@ namespace DualMind.API.Controllers
                     }
                 }
 
-                var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId);
+                var messages = await _threadMessagesService.GetThreadMessagesAsync(threadId, userId);
 
                 return Ok(new { items = messages });
             }
