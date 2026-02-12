@@ -206,7 +206,7 @@ namespace DualMind.API.AI.Providers
              // The stream processing happens inside the action.
              await ExecuteWithRetryAsync<bool>(async (apiKey) =>
              {
-                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? "llama-3.3-70b-versatile" : request.Model;
+                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? EnvConfig.DefaultGroqModel : request.Model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
                 messages.Add(new { role = "user", content = request.Prompt });

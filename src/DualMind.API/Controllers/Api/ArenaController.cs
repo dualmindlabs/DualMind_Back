@@ -560,7 +560,7 @@ namespace DualMind.API.Controllers.Api
                     try
                     {
                         System.Diagnostics.Debug.WriteLine($"Provider '{providerName}' failed for model '{model}', falling back to Groq: {ex.Message}");
-                        var fallbackModel = "llama-3.3-70b-versatile";
+                        var fallbackModel = Infrastructure.Configuration.EnvConfig.DefaultGroqModel;
                         var groq = _chatProviderFactory.GetGroqProvider();
                         var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
                         return (response, fallbackModel);
@@ -578,7 +578,7 @@ namespace DualMind.API.Controllers.Api
                     try
                     {
                         System.Diagnostics.Debug.WriteLine($"Groq failed for model '{model}', trying alternative Groq model: {ex.Message}");
-                        var fallbackModel = "llama-3.3-70b-versatile";
+                        var fallbackModel = Infrastructure.Configuration.EnvConfig.DefaultGroqModel;
                         var groq = _chatProviderFactory.GetGroqProvider();
                         var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
                         return (response, fallbackModel);

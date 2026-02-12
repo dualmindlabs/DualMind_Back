@@ -41,5 +41,6 @@ namespace DualMind.API.Infrastructure.Configuration
         public static string BytezApiKey => Get("BYTEZ_API_KEY");
         public static string JwtSecret => Get("JWT_SECRET");
         public static string AppSecret => Get("APP_SECRET");
+        public static string DefaultGroqModel => Get("DEFAULT_GROQ_MODEL", "llama-3.3-70b-versatile");
     }
 }
