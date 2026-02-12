@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy ASP app to Azure Web App - DualMind-Arena
+name: Build and deploy ASP.Net Core app to Azure Web App - DualMind-Arena
 
 on:
   push:
@@ -18,47 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: '8.x'
 
-      - name: Restore
-        run: dotnet restore src/DualMind.API/DualMind.API.csproj
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
 
-      - name: Prepare publish folder
-        run: |
-          if (Test-Path "${{ github.workspace }}\published") {
-            Remove-Item -Recurse -Force "${{ github.workspace }}\published"
-          }
-          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}\published" | Out-Null
-
-      - name: Publish to folder
-        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o "${{ github.workspace }}\published" --no-restore
-
-      - name: Copy site content to publish folder
-        run: |
-          robocopy "${{ github.workspace }}" "${{ github.workspace }}\published" /E /XD .git .github .vs .vscode obj packages published /XF *.user *.suo *.psess *.vsp *.vsmdi *.cache *.log
-          exit 0
-
-      - name: Verify published files
-        run: |
-          if (!(Test-Path "${{ github.workspace }}\published")) {
-            Write-Error "Published folder does not exist"
-          }
-          $files = Get-ChildItem -Path "${{ github.workspace }}\published" -Recurse -File -ErrorAction SilentlyContinue
-          if (!$files -or $files.Count -eq 0) {
-            Write-Error "Published folder is empty"
-            exit 1
-          }
-          Write-Host "Published file count: $($files.Count)"
+      - name: dotnet publish
+        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: ASP-app
-          path: '${{ github.workspace }}\\published\\**'
-          if-no-files-found: error
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: windows-latest
@@ -71,15 +46,14 @@ jobs:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: ASP-app
-          path: ./published
-
+          name: .net-app
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8D4C1BFA95C14BF2BA3F97D343B59842 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0241CB74220E490AB3E2CD5724AE9D8D }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C942C5132D64E2AAD5F0A000FC93EC3 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_62619ED3A7424ED69229A075FD221646 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_510D50F8C50B45D9BE2D5D956EF8B90D }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_ABA5862393AF4C96B7DF7CFA23E88214 }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
@@ -87,4 +61,5 @@ jobs:
         with:
           app-name: 'DualMind-Arena'
           slot-name: 'Production'
-          package: ./published
+          package: .
+          
