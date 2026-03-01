@@ -28,6 +28,7 @@ namespace DualMind.API.Controllers.Api
         private readonly ILeaderboardModelSelector _leaderboardModelSelector;
         private readonly IComparisonLogger _comparisonLogger;
         private readonly IUserSyncService _userSyncService;
+        private readonly IEnergyService _energyService;
         private readonly ILogger<ArenaController> _logger;
 
         public ArenaController(
@@ -38,6 +39,7 @@ namespace DualMind.API.Controllers.Api
             ILeaderboardModelSelector leaderboardModelSelector,
             IComparisonLogger comparisonLogger,
             IUserSyncService userSyncService,
+            IEnergyService energyService,
             ILogger<ArenaController> logger)
         {
             _modelSelector = modelSelector;
@@ -47,6 +49,7 @@ namespace DualMind.API.Controllers.Api
             _leaderboardModelSelector = leaderboardModelSelector;
             _comparisonLogger = comparisonLogger;
             _userSyncService = userSyncService;
+            _energyService = energyService;
             _logger = logger;
         }
 
@@ -158,14 +161,27 @@ namespace DualMind.API.Controllers.Api
                 if (Guid.TryParse(sub, out var parsedId))
                 {
                     userId = parsedId;
-                    
-                    var email = User.FindFirst("email")?.Value 
+
+                    var email = User.FindFirst("email")?.Value
                         ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-                    var name = User.FindFirst("full_name")?.Value 
-                        ?? User.FindFirst("name")?.Value 
+                    var name = User.FindFirst("full_name")?.Value
+                        ?? User.FindFirst("name")?.Value
                         ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-                    
+
                     await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
+
+                    // Energy check for authenticated users
+                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
+                    if (!energyConsumed)
+                    {
+                        return StatusCode(402, new
+                        {
+                            @object = "ai.error",
+                            code = "INSUFFICIENT_ENERGY",
+                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                            timestamp = DateTime.UtcNow
+                        });
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(request.ThreadId))
@@ -343,16 +359,29 @@ namespace DualMind.API.Controllers.Api
                 if (Guid.TryParse(sub, out var parsedId))
                 {
                     userId = parsedId;
-                    
-                    var email = User.FindFirst("email")?.Value 
+
+                    var email = User.FindFirst("email")?.Value
                         ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-                    var name = User.FindFirst("full_name")?.Value 
-                        ?? User.FindFirst("name")?.Value 
+                    var name = User.FindFirst("full_name")?.Value
+                        ?? User.FindFirst("name")?.Value
                         ?? User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-                    
+
                     await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
+
+                    // Energy check for authenticated users
+                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
+                    if (!energyConsumed)
+                    {
+                        return StatusCode(402, new
+                        {
+                            @object = "ai.error",
+                            code = "INSUFFICIENT_ENERGY",
+                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                            timestamp = DateTime.UtcNow
+                        });
+                    }
                 }
-                
+
                 await _comparisonLogger.LogComparisonAsync(comparisonId, request, response1, response2, userId);
 
                 if (!string.IsNullOrEmpty(request.ThreadId))

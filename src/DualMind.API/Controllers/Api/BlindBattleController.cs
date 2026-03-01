@@ -14,12 +14,14 @@ namespace DualMind.API.Controllers.Api
     {
         private readonly IChatProviderFactory _providerFactory;
         private readonly IModelSelector _modelSelector;
+        private readonly IEnergyService _energyService;
         private readonly ILogger<BlindBattleController> _logger;
 
-        public BlindBattleController(IChatProviderFactory providerFactory, IModelSelector modelSelector, ILogger<BlindBattleController> logger)
+        public BlindBattleController(IChatProviderFactory providerFactory, IModelSelector modelSelector, IEnergyService energyService, ILogger<BlindBattleController> logger)
         {
             _providerFactory = providerFactory;
             _modelSelector = modelSelector;
+            _energyService = energyService;
             _logger = logger;
         }
 
@@ -29,6 +31,23 @@ namespace DualMind.API.Controllers.Api
         {
             try
             {
+                // Energy check for authenticated users
+                var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(sub, out var userId))
+                {
+                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId);
+                    if (!energyConsumed)
+                    {
+                        return StatusCode(402, new
+                        {
+                            @object = "ai.error",
+                            code = "INSUFFICIENT_ENERGY",
+                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                            timestamp = DateTime.UtcNow
+                        });
+                    }
+                }
+
                 // 1. Get Models (Randomly or Specified)
                 string modelA_Name, modelB_Name;
 

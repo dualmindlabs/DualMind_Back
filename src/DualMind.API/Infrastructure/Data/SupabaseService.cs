@@ -191,7 +191,41 @@ namespace DualMind.API.Infrastructure.Data
             if (!response.IsSuccessStatusCode)
                 throw new Exception($"Supabase RPC error: {content}");
 
-            return JObject.Parse(content);
+            if (string.IsNullOrWhiteSpace(content) || content == "null")
+                return new JObject();
+
+            // RPC might return an array, scalar, or object. We try to wrap it if it's not an object.
+            try
+            {
+                var token = JToken.Parse(content);
+                if (token is JObject obj) return obj;
+                return new JObject { ["result"] = token };
+            }
+            catch
+            {
+                // Fallback if parsing fails but request succeeded
+                return new JObject();
+            }
+        }
+
+        public async Task<T> RpcAsync<T>(string functionName, object parameters = null)
+        {
+            var url = $"{RestUrl}/rpc/{functionName}";
+            var json = parameters != null
+                ? JsonConvert.SerializeObject(parameters)
+                : "{}";
+
+            var response = await _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Supabase RPC error: {content}");
+
+            if (string.IsNullOrWhiteSpace(content) || content == "null")
+                return default;
+
+            // Direct conversion (e.g., boolean or primitive return from RPC)
+            return JsonConvert.DeserializeObject<T>(content);
         }
     }
 }

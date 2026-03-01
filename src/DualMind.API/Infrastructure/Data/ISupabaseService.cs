@@ -13,5 +13,6 @@ namespace DualMind.API.Infrastructure.Data
         Task<List<T>> UpdateAsync<T>(string table, object data, string filter);
         Task DeleteAsync(string table, string filter);
         Task<JObject> RpcAsync(string functionName, object parameters = null);
+        Task<T> RpcAsync<T>(string functionName, object parameters = null);
     }
 }

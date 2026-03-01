@@ -13,11 +13,13 @@ namespace DualMind.API.Core.Services
     public class UserSyncService : IUserSyncService
     {
         private readonly ISupabaseService _supabase;
+        private readonly IEnergyService _energyService;
         private readonly Microsoft.Extensions.Logging.ILogger<UserSyncService> _logger;
 
-        public UserSyncService(ISupabaseService supabase, Microsoft.Extensions.Logging.ILogger<UserSyncService> logger)
+        public UserSyncService(ISupabaseService supabase, IEnergyService energyService, Microsoft.Extensions.Logging.ILogger<UserSyncService> logger)
         {
             _supabase = supabase;
+            _energyService = energyService;
             _logger = logger;
         }
 
@@ -26,7 +28,7 @@ namespace DualMind.API.Core.Services
             try
             {
                 var safeEmail = email ?? $"user_{authUserId}@placeholder.com";
-                
+
                 // Create/Update user row in public.users using Upsert
                 // This handles race conditions where a DB trigger might have already inserted the user
                 var user = new
@@ -42,6 +44,9 @@ namespace DualMind.API.Core.Services
 
                 await _supabase.UpsertAsync<object>("users", user);
                 _logger.LogInformation("Synced public.users row for {UserId} ({Email}) via Upsert", authUserId, safeEmail);
+
+                // Attempt to refill daily energy (grants +2 daily login bonus and resets to 20 if needed)
+                await _energyService.RefillDailyEnergyAsync(authUserId);
             }
             catch (Exception ex)
             {
