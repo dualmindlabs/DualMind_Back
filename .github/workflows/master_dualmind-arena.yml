@@ -16,7 +16,8 @@ jobs:
       contents: read #This is required for actions/checkout
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
@@ -24,10 +25,10 @@ jobs:
           dotnet-version: '8.x'
 
       - name: Build with dotnet
-        run: dotnet build DualMind.sln --configuration Release
+        run: dotnet build src/DualMind.API/DualMind.API.csproj --configuration Release
 
-      - name: Restore
-        run: dotnet restore DualMind.sln -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+      - name: dotnet publish
+        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -39,26 +40,19 @@ jobs:
     runs-on: windows-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      contents: none
 
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_62619ED3A7424ED69229A075FD221646 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_510D50F8C50B45D9BE2D5D956EF8B90D }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_ABA5862393AF4C96B7DF7CFA23E88214 }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'DualMind-Arena'
+          app-name: 'dualmind-arena'
           slot-name: 'Production'
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
           package: .
