@@ -6,6 +6,7 @@ namespace DualMind.API.Core.Models
     {
         public string? Title { get; set; }
         public Guid? UserId { get; set; }
+        public string? Mode { get; set; }
     }
 
     public class ThreadDto
@@ -13,11 +14,14 @@ namespace DualMind.API.Core.Models
         public Guid ThreadId { get; set; }
         public Guid? UserId { get; set; }
         public string? Title { get; set; }
+        public string? Mode { get; set; }
         /// <summary>
         /// Thread visibility: "private", "public", or "unlisted"
         /// </summary>
         public string Visibility { get; set; } = "private";
+        public int MessageCount { get; set; }
         public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
     }
 
     /// <summary>
@@ -43,6 +47,7 @@ namespace DualMind.API.Core.Models
         public Guid? ComparisonId { get; set; }
         public string? VoteChoice { get; set; }
         public bool HasVoted { get; set; }
+        public int Position { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

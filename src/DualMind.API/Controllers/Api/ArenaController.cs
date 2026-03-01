@@ -83,6 +83,7 @@ namespace DualMind.API.Controllers.Api
 
         [HttpPost]
         [Route("chat")]
+        [AllowAnonymous]
         public async Task<IActionResult> Chat([FromBody] ChatRequest request)
         {
             var startTime = DateTime.UtcNow;
@@ -191,6 +192,7 @@ namespace DualMind.API.Controllers.Api
 
         [HttpPost]
         [Route("dualchat")]
+        [Authorize]
         public async Task<IActionResult> DualChat([FromBody] ChatRequest request)
         {
             try
@@ -447,6 +449,7 @@ namespace DualMind.API.Controllers.Api
 
         [HttpPost]
         [Route("chat/stream")]
+        [Authorize]
         public async Task StreamChat([FromBody] ChatRequest request)
         {
             Response.ContentType = "text/event-stream";

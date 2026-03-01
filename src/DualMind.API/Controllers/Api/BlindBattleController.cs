@@ -139,7 +139,7 @@ namespace DualMind.API.Controllers.Api
     public class BlindBattleRequest
     {
         public string Prompt { get; set; }
-        public string Model1 { get; set; } // Optional: Specific model ID
-        public string Model2 { get; set; } // Optional: Specific model ID
+        public string? Model1 { get; set; } // Optional: Specific model ID
+        public string? Model2 { get; set; } // Optional: Specific model ID
     }
 }

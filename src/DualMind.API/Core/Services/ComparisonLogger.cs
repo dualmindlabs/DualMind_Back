@@ -56,24 +56,24 @@ namespace DualMind.API.Core.Services
                 {
                     var first = existing[0];
                     var id = first["model_id"]?.ToString();
-                    Guid modelId;
-                    if (Guid.TryParse(id, out modelId))
+                    if (Guid.TryParse(id, out Guid modelId))
                         return modelId;
                 }
+
+                // provider_name must always be lowercase — FK to providers table
+                var providerLower = provider?.ToLowerInvariant() ?? "unknown";
 
                 var newModel = new
                 {
                     model_name = modelName,
-                    provider_name = provider,
-                    api_url = "https://api.groq.com/openai/v1/chat/completions",
-                    description = displayName,
+                    display_name = displayName ?? modelName,
+                    provider_name = providerLower,
                     status = "active"
                 };
 
                 var inserted = await _supabase.InsertAsync<JObject>("ai_models", newModel);
                 var insertedId = inserted?["model_id"]?.ToString();
-                Guid newModelId;
-                if (Guid.TryParse(insertedId, out newModelId))
+                if (Guid.TryParse(insertedId, out Guid newModelId))
                     return newModelId;
             }
             catch (Exception ex)

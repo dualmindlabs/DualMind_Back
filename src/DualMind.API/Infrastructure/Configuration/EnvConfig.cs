@@ -38,9 +38,10 @@ namespace DualMind.API.Infrastructure.Configuration
         public static string SupabaseKey => Get("SUPABASE_KEY") ?? SupabaseAnonKey;
         public static string SupabaseServiceKey => Get("SUPABASE_SERVICE_KEY") ?? Get("SUPABASE_SERVICE_ROLE_KEY");
         public static string GroqApiKey => Get("GROQ_API_KEY");
+        public static string GoogleApiKey => Get("GOOGLE_API_KEY");
         public static string JwtSecret => Get("JWT_SECRET");
         public static string AppSecret => Get("APP_SECRET");
         public static string DefaultGroqModel => Get("DEFAULT_GROQ_MODEL", "llama-3.3-70b-versatile");
-        public static string BasicFallbackModel => Get("BASIC_FALLBACK_MODEL", "llama3-8b-8192");
+        public static string BasicFallbackModel => Get("BASIC_FALLBACK_MODEL", "llama-3.1-8b-instant");
     }
 }

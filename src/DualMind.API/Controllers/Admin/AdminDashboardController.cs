@@ -101,7 +101,7 @@ namespace DualMind.API.Controllers.Admin
                 var comparisonsResult = await _supabase.GetAllAsync("comparisons", $"select=comparison_id,user_id,model1_id,model2_id,prompt_text,created_at&order=created_at.desc&limit={limit}");
                 var recentComparisons = JsonConvert.DeserializeObject<List<Comparison>>(comparisonsResult);
 
-                var votesResult = await _supabase.GetAllAsync("model_votes", $"select=vote_id,comparison_id,user_id,winner_model_id,created_at&order=created_at.desc&limit={limit}");
+                var votesResult = await _supabase.GetAllAsync("model_votes", $"select=vote_id,comparison_id,user_id,winner_model_id,vote_choice,vote_duration_ms,voted_at,revealed_at&order=voted_at.desc&limit={limit}");
                 var recentVotes = JsonConvert.DeserializeObject<List<ModelVote>>(votesResult);
 
                 return Ok(new

@@ -13,7 +13,7 @@ namespace DualMind.API.Core.Services
     {
         private readonly ISupabaseService _supabase;
         private readonly ILogger<ThreadMessagesService> _logger;
-        
+
         public ThreadMessagesService(ISupabaseService supabase, ILogger<ThreadMessagesService> logger)
         {
             _supabase = supabase;
@@ -24,15 +24,16 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                var modelId = await GetModelIdAsync(modelName);
+                var position = await GetNextPositionAsync(threadId);
 
                 var message = new
                 {
                     thread_id = threadId,
                     prompt_text = prompt,
-                    model1_id = modelId,
+                    model1_name = modelName,
                     model1_response = response.Message,
-                    model1_time_ms = (int)response.ResponseTimeMs
+                    model1_time_ms = (int)response.ResponseTimeMs,
+                    position = position
                 };
 
                 await _supabase.InsertAsync<object>("thread_messages", message);
@@ -47,20 +48,20 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                var model1Id = await GetModelIdAsync(model1Name);
-                var model2Id = await GetModelIdAsync(model2Name);
+                var position = await GetNextPositionAsync(threadId);
 
                 var message = new
                 {
                     thread_id = threadId,
                     prompt_text = prompt,
-                    model1_id = model1Id,
-                    model2_id = model2Id,
+                    model1_name = model1Name,
+                    model2_name = model2Name,
                     model1_response = response1.Message,
                     model2_response = response2.Message,
                     model1_time_ms = (int)response1.ResponseTimeMs,
                     model2_time_ms = (int)response2.ResponseTimeMs,
-                    comparison_id = comparisonId
+                    comparison_id = comparisonId,
+                    position = position
                 };
 
                 await _supabase.InsertAsync<object>("thread_messages", message);
@@ -75,11 +76,10 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                // Select columns including comparison_id
                 var messages = await _supabase.SelectAsync<JObject>(
                     "thread_messages",
-                    "message_id,thread_id,prompt_text,model1_id,model2_id,model1_response,model2_response,model1_time_ms,model2_time_ms,created_at,comparison_id",
-                    $"thread_id=eq.{threadId}&order=created_at.asc"
+                    "message_id,thread_id,prompt_text,model1_name,model2_name,model1_response,model2_response,model1_time_ms,model2_time_ms,created_at,comparison_id,position",
+                    $"thread_id=eq.{threadId}&order=position.asc"
                 );
 
                 var result = new List<ThreadMessageDto>();
@@ -90,10 +90,13 @@ namespace DualMind.API.Core.Services
                         MessageId = Guid.Parse(m["message_id"].ToString()),
                         ThreadId = Guid.Parse(m["thread_id"].ToString()),
                         PromptText = m["prompt_text"]?.ToString(),
+                        Model1Name = m["model1_name"]?.ToString(),
+                        Model2Name = m["model2_name"]?.ToString(),
                         Model1Response = m["model1_response"]?.ToString(),
                         Model2Response = m["model2_response"]?.ToString(),
                         Model1TimeMs = m["model1_time_ms"] != null && m["model1_time_ms"].Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model1_time_ms"]) : null,
                         Model2TimeMs = m["model2_time_ms"] != null && m["model2_time_ms"].Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model2_time_ms"]) : null,
+                        Position = m["position"] != null && m["position"].Type != JTokenType.Null ? Convert.ToInt32(m["position"]) : 0,
                         CreatedAt = DateTime.Parse(m["created_at"].ToString())
                     };
 
@@ -103,52 +106,22 @@ namespace DualMind.API.Core.Services
                         if (Guid.TryParse(compIdStr, out Guid comparisonId))
                         {
                             dto.ComparisonId = comparisonId;
-                            
-                            // Fetch vote for this comparison BY REQUESTING USER
-                            try 
+
+                            try
                             {
                                 string voteFilter = $"comparison_id=eq.{comparisonId}";
                                 if (userId.HasValue)
-                                {
                                     voteFilter += $"&user_id=eq.{userId.Value}";
-                                }
-                                
-                                var votes = await _supabase.SelectAsync<JObject>("model_votes", "winner_model_id,vote_choice", voteFilter);
+
+                                // vote_choice column stores the authoritative vote result
+                                var votes = await _supabase.SelectAsync<JObject>("model_votes", "vote_choice,winner_model_id", voteFilter);
                                 if (votes != null && votes.Count > 0)
                                 {
-                                    // Determine vote choice based on votes found
-                                    bool hasM1 = false;
-                                    bool hasM2 = false;
-                                    bool hasNull = false;
-
-                                    var m1IdStr = m["model1_id"]?.ToString();
-                                    var m2IdStr = m["model2_id"]?.ToString();
-
-                                    foreach(var v in votes) 
-                                    {
-                                        var w = v["winner_model_id"];
-                                        if (w == null || w.Type == JTokenType.Null) 
-                                        {
-                                            hasNull = true;
-                                        } 
-                                        else 
-                                        {
-                                            var wId = w.ToString();
-                                            if (!string.IsNullOrEmpty(m1IdStr) && string.Equals(wId, m1IdStr, StringComparison.OrdinalIgnoreCase)) hasM1 = true;
-                                            if (!string.IsNullOrEmpty(m2IdStr) && string.Equals(wId, m2IdStr, StringComparison.OrdinalIgnoreCase)) hasM2 = true;
-                                        }
-                                    }
-
-                                    if (hasM1 && hasM2) dto.VoteChoice = "tie";
-                                    else if (hasNull) dto.VoteChoice = "both-bad";
-                                    else if (hasM1) dto.VoteChoice = "left";
-                                    else if (hasM2) dto.VoteChoice = "right";
-                                    
-                                    dto.HasVoted = true;
+                                    dto.VoteChoice = votes[0]["vote_choice"]?.ToString();
+                                    dto.HasVoted = !string.IsNullOrEmpty(dto.VoteChoice);
                                 }
                                 else
                                 {
-                                    // No vote found for this user - mark as not voted
                                     dto.HasVoted = false;
                                 }
                             }
@@ -158,18 +131,6 @@ namespace DualMind.API.Core.Services
                                 dto.HasVoted = false;
                             }
                         }
-                    }
-
-                    if (m["model1_id"] != null && m["model1_id"].Type != JTokenType.Null)
-                    {
-                        var model1Name = await GetModelNameAsync(Guid.Parse(m["model1_id"].ToString()));
-                        dto.Model1Name = model1Name;
-                    }
-
-                    if (m["model2_id"] != null && m["model2_id"].Type != JTokenType.Null)
-                    {
-                        var model2Name = await GetModelNameAsync(Guid.Parse(m["model2_id"].ToString()));
-                        dto.Model2Name = model2Name;
                     }
 
                     result.Add(dto);
@@ -184,46 +145,24 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        private async Task<Guid?> GetModelIdAsync(string modelName)
+        private async Task<int> GetNextPositionAsync(Guid threadId)
         {
             try
             {
-                var models = await _supabase.SelectAsync<JObject>("ai_models", "model_id", $"model_name=eq.{modelName}");
-                if (models != null && models.Count > 0)
+                var rows = await _supabase.SelectAsync<JObject>(
+                    "thread_messages",
+                    "position",
+                    $"thread_id=eq.{threadId}&order=position.desc&limit=1"
+                );
+                if (rows != null && rows.Count > 0)
                 {
-                    var id = models[0]["model_id"]?.ToString();
-                    Guid modelId;
-                    if (Guid.TryParse(id, out modelId))
-                        return modelId;
+                    var pos = rows[0]["position"];
+                    if (pos != null && pos.Type != JTokenType.Null)
+                        return Convert.ToInt32(pos) + 1;
                 }
             }
             catch { }
-            return null;
-        }
-
-        private async Task<string> GetModelNameAsync(Guid modelId)
-        {
-            try
-            {
-                // Fetch from description field instead of model_name
-                var models = await _supabase.SelectAsync<JObject>("ai_models", "description", $"model_id=eq.{modelId}");
-                if (models != null && models.Count > 0)
-                {
-                    var description = models[0]["description"]?.ToString();
-                    // Extract name till - (everything before the first dash)
-                    if (!string.IsNullOrEmpty(description))
-                    {
-                        var dashIndex = description.IndexOf('-');
-                        if (dashIndex > 0)
-                        {
-                            return description.Substring(0, dashIndex).Trim();
-                        }
-                        return description.Trim();
-                    }
-                }
-            }
-            catch { }
-            return null;
+            return 1;
         }
     }
 }

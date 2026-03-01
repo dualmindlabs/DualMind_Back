@@ -34,7 +34,7 @@ namespace DualMind.API.Controllers.Admin
                 if (limit > 500) limit = 500;
 
                 int offset = (page - 1) * limit;
-                var query = $"order=created_at.desc&limit={limit}&offset={offset}";
+                var query = $"order=voted_at.desc&limit={limit}&offset={offset}";
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var votes = JsonConvert.DeserializeObject<List<ModelVote>>(result);
 
@@ -89,7 +89,7 @@ namespace DualMind.API.Controllers.Admin
 
                 int offset = (page - 1) * limit;
                 var filterQuery = $"user_id=eq.{userId}";
-                var query = $"{filterQuery}&order=created_at.desc&limit={limit}&offset={offset}";
+                var query = $"{filterQuery}&order=voted_at.desc&limit={limit}&offset={offset}";
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var votes = JsonConvert.DeserializeObject<List<ModelVote>>(result);
 
@@ -116,7 +116,7 @@ namespace DualMind.API.Controllers.Admin
 
                 int offset = (page - 1) * limit;
                 var filterQuery = $"winner_model_id=eq.{modelId}";
-                var query = $"{filterQuery}&order=created_at.desc&limit={limit}&offset={offset}";
+                var query = $"{filterQuery}&order=voted_at.desc&limit={limit}&offset={offset}";
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var votes = JsonConvert.DeserializeObject<List<ModelVote>>(result);
 
@@ -143,7 +143,7 @@ namespace DualMind.API.Controllers.Admin
 
                 int offset = (page - 1) * limit;
                 var filterQuery = $"comparison_id=eq.{comparisonId}";
-                var query = $"{filterQuery}&order=created_at.desc&limit={limit}&offset={offset}";
+                var query = $"{filterQuery}&order=voted_at.desc&limit={limit}&offset={offset}";
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var votes = JsonConvert.DeserializeObject<List<ModelVote>>(result);
 

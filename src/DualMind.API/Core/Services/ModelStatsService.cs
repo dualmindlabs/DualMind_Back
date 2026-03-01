@@ -12,7 +12,7 @@ namespace DualMind.API.Core.Services
     {
         private readonly ISupabaseService _supabase;
         private readonly Microsoft.Extensions.Logging.ILogger<ModelStatsService> _logger;
-        
+
         public ModelStatsService(ISupabaseService supabase, Microsoft.Extensions.Logging.ILogger<ModelStatsService> logger)
         {
             _supabase = supabase;
@@ -23,68 +23,30 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                var models = await _supabase.SelectAsync<JObject>("ai_models", "model_id,model_name,provider_name", "status=eq.active");
-                var votes = await _supabase.SelectAsync<JObject>("model_votes", "winner_model_id", "");
-                var comparisons = await _supabase.SelectAsync<JObject>("comparisons", "model1_id,model2_id", "");
+                // Read from the pre-computed v_leaderboard view — never scan raw tables
+                var rows = await _supabase.SelectAsync<JObject>("v_leaderboard", "*", "");
 
-                var stats = new Dictionary<Guid, ModelStatsDto>();
-
-                foreach (var model in models)
+                return (rows ?? new List<JObject>()).Select(r => new ModelStatsDto
                 {
-                    if (model["model_id"] == null || model["model_id"].Type == JTokenType.Null)
-                        continue;
-
-                    if (!Guid.TryParse(model["model_id"].ToString(), out var modelId))
-                        continue;
-
-                    stats[modelId] = new ModelStatsDto
-                    {
-                        ModelId = modelId,
-                        ModelName = model["model_name"]?.ToString(),
-                        ProviderName = model["provider_name"]?.ToString(),
-                        TotalWins = 0,
-                        TotalResponses = 0,
-                        WinRate = 0
-                    };
-                }
-
-                foreach (var comp in comparisons)
-                {
-                    var m1 = comp["model1_id"];
-                    if (m1 != null && m1.Type != JTokenType.Null && Guid.TryParse(m1.ToString(), out var id1) && stats.ContainsKey(id1))
-                    {
-                        stats[id1].TotalResponses++;
-                    }
-
-                    var m2 = comp["model2_id"];
-                    if (m2 != null && m2.Type != JTokenType.Null && Guid.TryParse(m2.ToString(), out var id2) && stats.ContainsKey(id2))
-                    {
-                        stats[id2].TotalResponses++;
-                    }
-                }
-
-                foreach (var vote in votes)
-                {
-                    var w = vote["winner_model_id"];
-                    if (w != null && w.Type != JTokenType.Null && Guid.TryParse(w.ToString(), out var id) && stats.ContainsKey(id))
-                    {
-                        stats[id].TotalWins++;
-                    }
-                }
-
-                foreach (var stat in stats.Values)
-                {
-                    if (stat.TotalResponses > 0)
-                    {
-                        stat.WinRate = (double)stat.TotalWins / stat.TotalResponses * 100;
-                    }
-                }
-
-                return stats.Values
-                    .Where(s => s.TotalResponses > 0)
-                    .OrderByDescending(s => s.WinRate)
-                    .ThenByDescending(s => s.TotalWins)
-                    .ToList();
+                    ModelId = Guid.TryParse(r["model_id"]?.ToString(), out var id) ? id : Guid.Empty,
+                    ModelName = r["model_name"]?.ToString(),
+                    DisplayName = r["display_name"]?.ToString(),
+                    ProviderName = r["provider_name"]?.ToString(),
+                    EloScore = r["elo_score"] != null && r["elo_score"].Type != JTokenType.Null
+                        ? Convert.ToDouble(r["elo_score"]) : 1000.0,
+                    TotalWins = r["total_wins"] != null && r["total_wins"].Type != JTokenType.Null
+                        ? Convert.ToInt32(r["total_wins"]) : 0,
+                    TotalLosses = r["total_losses"] != null && r["total_losses"].Type != JTokenType.Null
+                        ? Convert.ToInt32(r["total_losses"]) : 0,
+                    TotalTies = r["total_ties"] != null && r["total_ties"].Type != JTokenType.Null
+                        ? Convert.ToInt32(r["total_ties"]) : 0,
+                    TotalResponses = r["total_comparisons"] != null && r["total_comparisons"].Type != JTokenType.Null
+                        ? Convert.ToInt32(r["total_comparisons"]) : 0,
+                    WinRate = r["win_rate"] != null && r["win_rate"].Type != JTokenType.Null
+                        ? Convert.ToDouble(r["win_rate"]) : 0.0,
+                    EloRank = r["elo_rank"] != null && r["elo_rank"].Type != JTokenType.Null
+                        ? Convert.ToInt32(r["elo_rank"]) : 0
+                }).ToList();
             }
             catch (Exception ex)
             {
@@ -97,7 +59,6 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                // Sanitize model name
                 var sanitizedModelName = winnerModelName?.Trim();
                 if (string.IsNullOrWhiteSpace(sanitizedModelName))
                     throw new ArgumentException("Winner model name cannot be empty", nameof(winnerModelName));
@@ -117,7 +78,8 @@ namespace DualMind.API.Core.Services
                 {
                     user_id = userId,
                     comparison_id = comparisonId,
-                    winner_model_id = winnerModelId
+                    winner_model_id = winnerModelId,
+                    voted_at = DateTime.UtcNow
                 };
 
                 await _supabase.InsertAsync<object>("model_votes", vote);
@@ -129,46 +91,52 @@ namespace DualMind.API.Core.Services
             }
         }
 
-        public async Task RecordVoteByChoiceAsync(Guid comparisonId, string voteChoice, Guid? userId)
+        public async Task RecordVoteByChoiceAsync(Guid comparisonId, string voteChoice, Guid? userId, int? voteDurationMs = null)
         {
             try
             {
-                // 1. Fetch Comparison to get models
-                var comps = await _supabase.SelectAsync<JObject>("comparisons", "model1_id,model2_id", $"comparison_id=eq.{comparisonId}");
+                // Fetch comparison through masked view — enforces blind vote
+                var comps = await _supabase.SelectAsync<JObject>(
+                    "v_comparisons_masked",
+                    "comparison_id,model1_id,model2_id",
+                    $"comparison_id=eq.{comparisonId}"
+                );
                 if (comps == null || comps.Count == 0)
                     throw new Exception("Comparison not found");
 
                 var comp = comps[0];
                 var m1 = comp["model1_id"];
                 var m2 = comp["model2_id"];
-                
+
                 Guid? model1Id = (m1 != null && m1.Type != JTokenType.Null) ? Guid.Parse(m1.ToString()) : (Guid?)null;
                 Guid? model2Id = (m2 != null && m2.Type != JTokenType.Null) ? Guid.Parse(m2.ToString()) : (Guid?)null;
 
-                var votesToInsert = new List<object>();
+                // Single vote row — UNIQUE(comparison_id, user_id) enforced by DB
+                Guid? winnerModelId = null;
+                if (voteChoice == "left") winnerModelId = model1Id;
+                else if (voteChoice == "right") winnerModelId = model2Id;
+                // tie and both-bad: winner_model_id stays NULL
 
-                if (voteChoice == "left" && model1Id.HasValue)
+                var vote = new
                 {
-                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model1Id.Value });
-                }
-                else if (voteChoice == "right" && model2Id.HasValue)
-                {
-                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model2Id.Value });
-                }
-                else if (voteChoice == "tie")
-                {
-                    if (model1Id.HasValue) votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model1Id.Value });
-                    if (model2Id.HasValue) votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = model2Id.Value });
-                }
-                else if (voteChoice == "both-bad")
-                {
-                    votesToInsert.Add(new { user_id = userId, comparison_id = comparisonId, winner_model_id = (Guid?)null });
-                }
+                    user_id = userId,
+                    comparison_id = comparisonId,
+                    winner_model_id = winnerModelId,
+                    vote_choice = voteChoice,
+                    vote_duration_ms = voteDurationMs,
+                    voted_at = DateTime.UtcNow
+                };
 
-                foreach (var vote in votesToInsert)
-                {
-                     await _supabase.InsertAsync<object>("model_votes", vote);
-                }
+                await _supabase.InsertAsync<object>("model_votes", vote);
+
+                // Reveal comparison so model identities are unmasked for this user's next read
+                await _supabase.UpdateAsync<object>("comparisons",
+                    new { is_revealed = true },
+                    $"comparison_id=eq.{comparisonId}");
+
+                await _supabase.UpdateAsync<object>("model_votes",
+                    new { revealed_at = DateTime.UtcNow },
+                    $"comparison_id=eq.{comparisonId}&user_id=eq.{userId}");
             }
             catch (Exception ex)
             {

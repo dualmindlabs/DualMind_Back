@@ -10,41 +10,40 @@ using DualMind.API.Infrastructure.Configuration;
 
 namespace DualMind.API.AI.Providers
 {
-    public class GroqService : IChatProvider
+    public class GoogleService : IChatProvider
     {
         private readonly HttpClient _client;
         private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
-        private readonly ILogger<GroqService> _logger;
-        private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
-        private const string GroqSpeechApiUrl = "https://api.groq.com/openai/v1/audio/speech";
+        private readonly ILogger<GoogleService> _logger;
+        // Using the new OpenAI-compatible endpoint from Google
+        private const string GoogleApiUrl = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
         // Environment variable API key (for local .env or Azure secrets)
         private readonly string? _envApiKey;
 
-        public GroqService(HttpClient client, Core.Services.IProviderConfigService config, ILogger<GroqService> logger)
+        public GoogleService(HttpClient client, Core.Services.IProviderConfigService config, ILogger<GoogleService> logger)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _classifier = new Core.Services.ProviderErrorClassifier();
 
-            // Check for GROQ_API_KEY in environment variables first (from .env or Azure secrets)
-            _envApiKey = EnvConfig.GroqApiKey;
+            _envApiKey = EnvConfig.GoogleApiKey;
 
             if (!string.IsNullOrEmpty(_envApiKey))
             {
-                _logger.LogInformation("GroqService: Using API key from environment variable (GROQ_API_KEY)");
+                _logger.LogInformation("GoogleService: Using API key from environment variable (GOOGLE_API_KEY)");
             }
             else
             {
-                _logger.LogInformation("GroqService: No GROQ_API_KEY found in environment, will use database keys");
+                _logger.LogInformation("GoogleService: No GOOGLE_API_KEY found in environment, will use database keys");
             }
         }
 
         private async Task<T> ExecuteWithRetryAsync<T>(Func<string, Task<T>> action)
         {
-            // Priority 1: Use environment variable API key if available (local .env or Azure secrets)
+            // Priority 1: Use environment variable API key if available
             if (!string.IsNullOrEmpty(_envApiKey))
             {
                 try
@@ -53,17 +52,14 @@ namespace DualMind.API.AI.Providers
                 }
                 catch (Exception ex)
                 {
-                    // If env key fails with auth error, don't retry - it's likely invalid
                     var response = ex.Data.Contains("HttpResponse") ? ex.Data["HttpResponse"] as HttpResponseMessage : null;
                     var errorType = _classifier.Classify(ex, response);
 
                     if (errorType == Core.Services.ProviderErrorType.Auth)
                     {
-                        _logger.LogError(ex, "GroqService: Environment API key failed with auth error");
-                        throw new Exception($"Groq API authentication failed. Please check your GROQ_API_KEY environment variable.", ex);
+                        _logger.LogError(ex, "GoogleService: Environment API key failed with auth error");
+                        throw new Exception($"Google API authentication failed. Please check your GOOGLE_API_KEY environment variable.", ex);
                     }
-
-                    // For other errors (rate limit, etc.), still throw but with better message
                     throw;
                 }
             }
@@ -74,12 +70,11 @@ namespace DualMind.API.AI.Providers
 
             while (true)
             {
-                var key = await _config.GetNextKeyAsync("groq", triedKeys);
+                var key = await _config.GetNextKeyAsync("google", triedKeys);
                 if (key == null)
                 {
-                    // If no database keys available, suggest using environment variable
-                    throw new Core.Exceptions.ProviderExhaustedException("groq",
-                        "No active Groq API keys found in database. Please set GROQ_API_KEY environment variable or add keys to the database.");
+                    throw new Core.Exceptions.ProviderExhaustedException("google",
+                        "No active Google API keys found in database. Please set GOOGLE_API_KEY environment variable or add keys to the database.");
                 }
 
                 triedKeys.Add(key.KeyId);
@@ -111,14 +106,14 @@ namespace DualMind.API.AI.Providers
                         continue; // Rotate ONCE for transient
                     }
 
-                    throw; // Rethrow if we shouldn't retry or already retried transient
+                    throw;
                 }
             }
         }
 
         public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
         {
-            var targetUrl = GroqApiUrl;
+            var targetUrl = GoogleApiUrl;
 
             return await ExecuteWithRetryAsync(async (apiKey) =>
             {
@@ -137,6 +132,7 @@ namespace DualMind.API.AI.Providers
                 var json = JsonConvert.SerializeObject(requestBody);
 
                 var requestMsg = new HttpRequestMessage(HttpMethod.Post, targetUrl);
+                // Google expects Bearer token exactly like OpenAI for this specific endpoint
                 requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 requestMsg.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -145,7 +141,7 @@ namespace DualMind.API.AI.Providers
                     if (!response.IsSuccessStatusCode)
                     {
                         var errorContent = await response.Content.ReadAsStringAsync();
-                        var exception = new Exception($"API error ({(int)response.StatusCode}): {errorContent}");
+                        var exception = new Exception($"Google API error ({(int)response.StatusCode}): {errorContent}");
                         exception.Data["HttpResponse"] = response;
                         throw exception;
                     }
@@ -168,46 +164,13 @@ namespace DualMind.API.AI.Providers
             });
         }
 
-        public async Task<byte[]> GenerateSpeechAsync(string text, string voice = "Celeste-PlayAI")
-        {
-             return await ExecuteWithRetryAsync(async (apiKey) =>
-            {
-                var requestBody = new
-                {
-                    model = "playai-tts",
-                    input = text,
-                    voice = voice,
-                    response_format = "wav"
-                };
-
-                var json = JsonConvert.SerializeObject(requestBody);
-                var requestMsg = new HttpRequestMessage(HttpMethod.Post, GroqSpeechApiUrl);
-                requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-                requestMsg.Content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                using (var response = await _client.SendAsync(requestMsg))
-                {
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        var exception = new Exception($"Groq Speech API error ({(int)response.StatusCode}): {errorContent}");
-                        exception.Data["HttpResponse"] = response;
-                        throw exception;
-                    }
-                    return await response.Content.ReadAsByteArrayAsync();
-                }
-            });
-        }
-
         public bool SupportsStreaming => true;
 
         public async Task StreamAsync(ChatRequest request, Func<AIStreamEvent, Task> onEvent, System.Threading.CancellationToken cancellationToken)
         {
-             // For streaming, we just use ExecuteWithRetryAsync but it returns empty Task.
-             // The stream processing happens inside the action.
              await ExecuteWithRetryAsync<bool>(async (apiKey) =>
              {
-                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? EnvConfig.DefaultGroqModel : request.Model;
+                var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? "gemini-2.5-flash" : request.Model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
                 messages.Add(new { role = "user", content = request.Prompt });
@@ -222,7 +185,7 @@ namespace DualMind.API.AI.Providers
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GoogleApiUrl);
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
@@ -232,7 +195,7 @@ namespace DualMind.API.AI.Providers
                      if (!response.IsSuccessStatusCode)
                      {
                          var errorContent = await response.Content.ReadAsStringAsync();
-                         var exception = new Exception($"Groq Streaming API error ({(int)response.StatusCode}): {errorContent}");
+                         var exception = new Exception($"Google Streaming API error ({(int)response.StatusCode}): {errorContent}");
                          exception.Data["HttpResponse"] = response;
                          throw exception;
                      }

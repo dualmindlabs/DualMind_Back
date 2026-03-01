@@ -161,9 +161,9 @@ builder.Services.AddHttpClient<DualMind.API.AI.Providers.GroqService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(45);
 });
-builder.Services.AddHttpClient<DualMind.API.AI.Providers.BytezService>(client =>
+builder.Services.AddHttpClient<DualMind.API.AI.Providers.GoogleService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(300); // Higher timeout for Bytez
+    client.Timeout = TimeSpan.FromSeconds(45);
 });
 
 builder.Services.AddScoped<DualMind.API.AI.Gateway.IChatProviderFactory, DualMind.API.AI.Gateway.ChatProviderFactory>();
@@ -261,6 +261,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Warm up model cache on startup so provider routing works from first request
+_ = Task.Run(async () =>
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var modelSelector = scope.ServiceProvider.GetRequiredService<DualMind.API.Core.Services.IModelSelector>();
+        await modelSelector.GetRandomModelAsync();
+        app.Logger.LogInformation("Model cache warmed up on startup");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Model cache warmup failed — will load on first request");
+    }
+});
 
 app.Run();
 

@@ -61,20 +61,17 @@ namespace DualMind.API.Core.Models
         [JsonProperty("model_name")]
         public string? ModelName { get; set; }
 
+        [JsonProperty("display_name")]
+        public string? DisplayName { get; set; }
+
         [JsonProperty("provider_name")]
         public string? ProviderName { get; set; }
 
-        [JsonProperty("api_url")]
-        public string? ApiUrl { get; set; }
-
-        [JsonProperty("description")]
-        public string? Description { get; set; }
+        [JsonProperty("is_free")]
+        public bool? IsFree { get; set; }
 
         [JsonProperty("status")]
         public string? Status { get; set; } = "active";
-
-        [JsonProperty("created_by")]
-        public Guid? CreatedBy { get; set; }
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
@@ -88,20 +85,17 @@ namespace DualMind.API.Core.Models
         [JsonProperty("model_name")]
         public string? ModelName { get; set; }
 
+        [JsonProperty("display_name")]
+        public string? DisplayName { get; set; }
+
         [JsonProperty("provider_name")]
         public string? ProviderName { get; set; }
 
-        [JsonProperty("api_url")]
-        public string? ApiUrl { get; set; }
-
-        [JsonProperty("description")]
-        public string? Description { get; set; }
+        [JsonProperty("is_free")]
+        public bool? IsFree { get; set; } = true;
 
         [JsonProperty("status")]
         public string? Status { get; set; } = "active";
-
-        [JsonProperty("created_by")]
-        public Guid? CreatedBy { get; set; }
     }
 
     public class AIModelUpdateRequest
@@ -109,14 +103,14 @@ namespace DualMind.API.Core.Models
         [JsonProperty("model_name")]
         public string? ModelName { get; set; }
 
+        [JsonProperty("display_name")]
+        public string? DisplayName { get; set; }
+
         [JsonProperty("provider_name")]
         public string? ProviderName { get; set; }
 
-        [JsonProperty("api_url")]
-        public string? ApiUrl { get; set; }
-
-        [JsonProperty("description")]
-        public string? Description { get; set; }
+        [JsonProperty("is_free")]
+        public bool? IsFree { get; set; }
 
         [JsonProperty("status")]
         public string? Status { get; set; }
@@ -133,6 +127,9 @@ namespace DualMind.API.Core.Models
 
         [JsonProperty("user_id")]
         public Guid? UserId { get; set; }
+
+        [JsonProperty("thread_id")]
+        public Guid? ThreadId { get; set; }
 
         [JsonProperty("prompt_text")]
         public string? PromptText { get; set; }
@@ -154,6 +151,18 @@ namespace DualMind.API.Core.Models
 
         [JsonProperty("model2_time_ms")]
         public int? Model2TimeMs { get; set; }
+
+        [JsonProperty("mode")]
+        public string? Mode { get; set; }
+
+        [JsonProperty("category")]
+        public string? Category { get; set; }
+
+        [JsonProperty("is_revealed")]
+        public bool? IsRevealed { get; set; }
+
+        [JsonProperty("is_flagged")]
+        public bool? IsFlagged { get; set; }
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
@@ -174,8 +183,17 @@ namespace DualMind.API.Core.Models
         [JsonProperty("winner_model_id")]
         public Guid? WinnerModelId { get; set; }
 
-        [JsonProperty("created_at")]
-        public DateTime? CreatedAt { get; set; }
+        [JsonProperty("vote_choice")]
+        public string? VoteChoice { get; set; }
+
+        [JsonProperty("vote_duration_ms")]
+        public int? VoteDurationMs { get; set; }
+
+        [JsonProperty("voted_at")]
+        public DateTime? VotedAt { get; set; }
+
+        [JsonProperty("revealed_at")]
+        public DateTime? RevealedAt { get; set; }
     }
 
     public class ModelVoteCreateRequest
@@ -187,7 +205,16 @@ namespace DualMind.API.Core.Models
         public Guid ComparisonId { get; set; }
 
         [JsonProperty("winner_model_id")]
-        public Guid WinnerModelId { get; set; }
+        public Guid? WinnerModelId { get; set; }
+
+        [JsonProperty("vote_choice")]
+        public string? VoteChoice { get; set; }
+
+        [JsonProperty("vote_duration_ms")]
+        public int? VoteDurationMs { get; set; }
+
+        [JsonProperty("voted_at")]
+        public DateTime VotedAt { get; set; } = DateTime.UtcNow;
     }
 
     // Thread Models
@@ -202,8 +229,20 @@ namespace DualMind.API.Core.Models
         [JsonProperty("title")]
         public string? Title { get; set; }
 
+        [JsonProperty("mode")]
+        public string? Mode { get; set; }
+
+        [JsonProperty("visibility")]
+        public string? Visibility { get; set; } = "private";
+
+        [JsonProperty("message_count")]
+        public int? MessageCount { get; set; }
+
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
+
+        [JsonProperty("updated_at")]
+        public DateTime? UpdatedAt { get; set; }
     }
 
     public class ThreadCreateRequest
@@ -213,6 +252,9 @@ namespace DualMind.API.Core.Models
 
         [JsonProperty("title")]
         public string? Title { get; set; }
+
+        [JsonProperty("mode")]
+        public string? Mode { get; set; }
     }
 
     public class ThreadUpdateRequest
@@ -230,14 +272,17 @@ namespace DualMind.API.Core.Models
         [JsonProperty("thread_id")]
         public Guid? ThreadId { get; set; }
 
+        [JsonProperty("comparison_id")]
+        public Guid? ComparisonId { get; set; }
+
         [JsonProperty("prompt_text")]
         public string? PromptText { get; set; }
 
-        [JsonProperty("model1_id")]
-        public Guid? Model1Id { get; set; }
+        [JsonProperty("model1_name")]
+        public string? Model1Name { get; set; }
 
-        [JsonProperty("model2_id")]
-        public Guid? Model2Id { get; set; }
+        [JsonProperty("model2_name")]
+        public string? Model2Name { get; set; }
 
         [JsonProperty("model1_response")]
         public string? Model1Response { get; set; }
@@ -250,6 +295,9 @@ namespace DualMind.API.Core.Models
 
         [JsonProperty("model2_time_ms")]
         public int? Model2TimeMs { get; set; }
+
+        [JsonProperty("position")]
+        public int? Position { get; set; }
 
         [JsonProperty("created_at")]
         public DateTime? CreatedAt { get; set; }
@@ -260,14 +308,17 @@ namespace DualMind.API.Core.Models
         [JsonProperty("thread_id")]
         public Guid ThreadId { get; set; }
 
+        [JsonProperty("comparison_id")]
+        public Guid? ComparisonId { get; set; }
+
         [JsonProperty("prompt_text")]
         public string? PromptText { get; set; }
 
-        [JsonProperty("model1_id")]
-        public Guid? Model1Id { get; set; }
+        [JsonProperty("model1_name")]
+        public string? Model1Name { get; set; }
 
-        [JsonProperty("model2_id")]
-        public Guid? Model2Id { get; set; }
+        [JsonProperty("model2_name")]
+        public string? Model2Name { get; set; }
 
         [JsonProperty("model1_response")]
         public string? Model1Response { get; set; }
@@ -280,5 +331,8 @@ namespace DualMind.API.Core.Models
 
         [JsonProperty("model2_time_ms")]
         public int? Model2TimeMs { get; set; }
+
+        [JsonProperty("position")]
+        public int? Position { get; set; }
     }
 }

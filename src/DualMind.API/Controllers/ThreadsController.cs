@@ -91,7 +91,7 @@ namespace DualMind.API.Controllers
                 
                 await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
 
-                var thread = await _threadsService.CreateThreadAsync(request?.Title, userId);
+                var thread = await _threadsService.CreateThreadAsync(request?.Title, userId, request?.Mode);
 
                 return Ok(thread);
             }

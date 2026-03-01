@@ -30,7 +30,7 @@ namespace DualMind.API.Core.Services
 
             var rows = await _supabase.SelectAsync<JObject>(
                 "ai_models",
-                "model_id,model_name,provider_name,api_url,description,status",
+                "model_id,model_name,display_name,provider_name,status",
                 "status=eq.active&order=created_at.desc"
             );
 
@@ -39,9 +39,8 @@ namespace DualMind.API.Core.Services
                 {
                     Id = r["model_id"]?.ToString(),
                     Name = r["model_name"]?.ToString(),
-                    DisplayName = r["description"]?.ToString() ?? r["model_name"]?.ToString(),
-                    Provider = r["provider_name"]?.ToString(),
-                    ApiUrl = r["api_url"]?.ToString()
+                    DisplayName = r["display_name"]?.ToString() ?? r["model_name"]?.ToString(),
+                    Provider = r["provider_name"]?.ToString()
                 })
                 .Where(m => !string.IsNullOrWhiteSpace(m.Name))
                 .ToList();
@@ -56,19 +55,11 @@ namespace DualMind.API.Core.Services
 
         public List<ModelDefinition> GetAllModels()
         {
-            // Note: Since this was synchronous before, but data loading is async, 
-            // the previous implementation used a lock and potentially stale data or blocking?
-            // Actually, the previous LoadModelsAsync was async. GetAllModels took a lock.
-            // For now, if we need synchronous access, we rely on cache.
-            // But if cache is empty, we can't await here easily.
-            // Ideally, we changle GetAllModels to GetAllModelsAsync.
-            // But to preserve signature blindly:
             if (_cache.TryGetValue(CacheKey, out List<ModelDefinition> cachedModels))
             {
                 return cachedModels;
             }
-            // Fallback: block or return empty. Returning empty is safer than deadlock.
-            return new List<ModelDefinition>(); 
+            return new List<ModelDefinition>();
         }
 
         public async Task<string> GetRandomModelAsync()
@@ -86,9 +77,19 @@ namespace DualMind.API.Core.Services
             if (string.IsNullOrWhiteSpace(modelName)) return null;
             if (_cache.TryGetValue(CacheKey, out List<ModelDefinition> cachedModels))
             {
-                return cachedModels.FirstOrDefault(m =>
+                var byName = cachedModels.FirstOrDefault(m =>
                     m.Name != null && m.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase));
+
+                if (byName != null) return byName;
+
+                if (Guid.TryParse(modelName, out _))
+                {
+                    var byId = cachedModels.FirstOrDefault(m => m.Id != null && m.Id.Equals(modelName, StringComparison.OrdinalIgnoreCase));
+                    if (byId != null) return byId;
+                }
             }
+
+            System.Diagnostics.Debug.WriteLine($"Warning: Model '{modelName}' not found in cache.");
             return null;
         }
 
@@ -119,6 +120,5 @@ namespace DualMind.API.Core.Services
         public string Name { get; set; }
         public string DisplayName { get; set; }
         public string Provider { get; set; }
-        public string ApiUrl { get; set; }
     }
 }

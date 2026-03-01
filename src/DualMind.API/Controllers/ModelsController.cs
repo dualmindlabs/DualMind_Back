@@ -28,7 +28,7 @@ namespace DualMind.API.Controllers
             {
                 var rows = await _supabase.SelectAsync<JObject>(
                     "ai_models",
-                    "model_id,model_name,provider_name,api_url,description,status,created_at",
+                    "model_id,model_name,display_name,provider_name,is_free,status,created_at",
                     "status=eq.active&order=created_at.desc"
                 );
 
@@ -36,9 +36,10 @@ namespace DualMind.API.Controllers
                 {
                     modelId = m["model_id"]?.ToString(),
                     modelName = m["model_name"]?.ToString(),
-                    displayName = m["description"]?.ToString() ?? m["model_name"]?.ToString(),
+                    displayName = m["display_name"]?.ToString() ?? m["model_name"]?.ToString(),
                     providerName = m["provider_name"]?.ToString(),
-                    apiUrl = m["api_url"]?.ToString(),
+                    isFree = m["is_free"] != null && m["is_free"].Type != JTokenType.Null
+                        ? Convert.ToBoolean(m["is_free"]) : true,
                     status = m["status"]?.ToString()
                 }).ToList();
 

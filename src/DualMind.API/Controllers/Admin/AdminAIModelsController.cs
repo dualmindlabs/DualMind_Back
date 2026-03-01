@@ -77,8 +77,11 @@ namespace DualMind.API.Controllers.Admin
         {
             try
             {
-                if (string.IsNullOrEmpty(request?.ModelName) || string.IsNullOrEmpty(request?.ApiUrl))
-                    return BadRequest("Model name and API URL are required");
+                if (string.IsNullOrEmpty(request?.ModelName) || string.IsNullOrEmpty(request?.ProviderName))
+                    return BadRequest("Model name and provider name are required");
+
+                // provider_name must always be lowercase — FK to providers table
+                request.ProviderName = request.ProviderName.ToLowerInvariant();
 
                 var response = await _supabase.CreateAsync(TABLE, request);
                 var content = await response.Content.ReadAsStringAsync();
@@ -102,6 +105,11 @@ namespace DualMind.API.Controllers.Admin
         {
             try
             {
+                if (!string.IsNullOrEmpty(request?.ProviderName))
+                {
+                    request.ProviderName = request.ProviderName.ToLowerInvariant();
+                }
+
                 request.UpdatedAt = DateTime.UtcNow;
                 var response = await _supabase.UpdateAsync(TABLE, ID_COLUMN, id.ToString(), request);
                 var content = await response.Content.ReadAsStringAsync();

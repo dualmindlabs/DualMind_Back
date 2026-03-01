@@ -1,5 +1,4 @@
 using System;
-using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -25,7 +24,7 @@ namespace DualMind.API.Controllers
         {
             if (request == null || request.ComparisonId == Guid.Empty)
             {
-                return BadRequest( new
+                return BadRequest(new
                 {
                     success = false,
                     error = "ComparisonId is required",
@@ -35,7 +34,7 @@ namespace DualMind.API.Controllers
 
             if (string.IsNullOrWhiteSpace(request.VoteChoice))
             {
-                return BadRequest( new
+                return BadRequest(new
                 {
                     success = false,
                     error = "VoteChoice is required (left, right, tie, both-bad)",
@@ -55,11 +54,11 @@ namespace DualMind.API.Controllers
                     }
                 }
 
-                // NEW: Handle voteChoice enum -> winner model logic
                 await _modelStatsService.RecordVoteByChoiceAsync(
-                    request.ComparisonId, 
-                    request.VoteChoice.ToLower(), 
-                    userId
+                    request.ComparisonId,
+                    request.VoteChoice.ToLower(),
+                    userId,
+                    request.VoteDurationMs
                 );
 
                 return Ok(new
@@ -81,12 +80,12 @@ namespace DualMind.API.Controllers
 
         [HttpGet]
         [Route("model-stats")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetModelStats()
         {
             try
             {
                 var stats = await _modelStatsService.GetModelStatsAsync();
-
                 return Ok(new { items = stats });
             }
             catch (Exception ex)
@@ -99,15 +98,5 @@ namespace DualMind.API.Controllers
                 });
             }
         }
-    }
-
-    public class VoteRequest
-    {
-        public Guid ComparisonId { get; set; }
-        public string VoteChoice { get; set; } // "left" | "right" | "tie" | "both-bad"
-        public Guid? UserId { get; set; }
-        
-        // DEPRECATED but kept for backwards compatibility
-        public string WinnerModelName { get; set; }
     }
 }

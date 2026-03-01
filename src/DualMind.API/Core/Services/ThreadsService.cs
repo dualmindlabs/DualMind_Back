@@ -28,42 +28,29 @@ namespace DualMind.API.Core.Services
                 filter = $"user_id=eq.{userId.Value}&" + filter;
             }
 
-            var threads = await _supabase.SelectAsync<JObject>("threads", "thread_id,user_id,title,visibility,created_at", filter);
+            var threads = await _supabase.SelectAsync<JObject>("threads", "thread_id,user_id,title,mode,visibility,message_count,created_at,updated_at", filter);
 
             var result = new List<ThreadDto>();
             foreach (var t in threads)
             {
-                result.Add(new ThreadDto
-                {
-                    ThreadId = Guid.Parse(t["thread_id"].ToString()),
-                    UserId = t["user_id"] != null && t["user_id"].Type != JTokenType.Null ? Guid.Parse(t["user_id"].ToString()) : (Guid?)null,
-                    Title = t["title"]?.ToString(),
-                    Visibility = t["visibility"]?.ToString() ?? "private",
-                    CreatedAt = DateTime.Parse(t["created_at"].ToString())
-                });
+                result.Add(MapThreadDto(t));
             }
 
             return result;
         }
 
-        public async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId)
+        public async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId, string mode = null)
         {
             var thread = new
             {
                 title = string.IsNullOrEmpty(title) ? "New Chat" : title,
-                user_id = userId
+                user_id = userId,
+                mode = mode ?? "battle"
             };
 
             var inserted = await _supabase.InsertAsync<JObject>("threads", thread);
 
-            return new ThreadDto
-            {
-                ThreadId = Guid.Parse(inserted["thread_id"].ToString()),
-                UserId = inserted["user_id"] != null && inserted["user_id"].Type != JTokenType.Null ? Guid.Parse(inserted["user_id"].ToString()) : (Guid?)null,
-                Title = inserted["title"]?.ToString(),
-                Visibility = inserted["visibility"]?.ToString() ?? "private",
-                CreatedAt = DateTime.Parse(inserted["created_at"].ToString())
-            };
+            return MapThreadDto(inserted);
         }
 
         public async Task<ThreadDto?> GetThreadAsync(Guid threadId)
@@ -72,16 +59,9 @@ namespace DualMind.API.Core.Services
             if (threads == null || threads.Count == 0)
                 return null;
 
-            var t = threads[0];
-            return new ThreadDto
-            {
-                ThreadId = Guid.Parse(t["thread_id"].ToString()),
-                UserId = t["user_id"] != null && t["user_id"].Type != JTokenType.Null ? Guid.Parse(t["user_id"].ToString()) : (Guid?)null,
-                Title = t["title"]?.ToString(),
-                Visibility = t["visibility"]?.ToString() ?? "private",
-                CreatedAt = DateTime.Parse(t["created_at"].ToString())
-            };
+            return MapThreadDto(threads[0]);
         }
+
         public async Task UpdateThreadAsync(Guid threadId, string title)
         {
             var updateData = new { title = title };
@@ -90,7 +70,6 @@ namespace DualMind.API.Core.Services
 
         public async Task UpdateThreadVisibilityAsync(Guid threadId, string visibility)
         {
-            // Validate visibility value
             var validVisibilities = new[] { "private", "public", "unlisted" };
             if (!validVisibilities.Contains(visibility.ToLowerInvariant()))
             {
@@ -104,6 +83,21 @@ namespace DualMind.API.Core.Services
         public async Task DeleteThreadAsync(Guid threadId)
         {
             await _supabase.DeleteAsync("threads", $"thread_id=eq.{threadId}");
+        }
+
+        private static ThreadDto MapThreadDto(JObject t)
+        {
+            return new ThreadDto
+            {
+                ThreadId = Guid.Parse(t["thread_id"].ToString()),
+                UserId = t["user_id"] != null && t["user_id"].Type != JTokenType.Null ? Guid.Parse(t["user_id"].ToString()) : (Guid?)null,
+                Title = t["title"]?.ToString(),
+                Mode = t["mode"]?.ToString(),
+                Visibility = t["visibility"]?.ToString() ?? "private",
+                MessageCount = t["message_count"] != null && t["message_count"].Type != JTokenType.Null ? Convert.ToInt32(t["message_count"]) : 0,
+                CreatedAt = DateTime.Parse(t["created_at"].ToString()),
+                UpdatedAt = t["updated_at"] != null && t["updated_at"].Type != JTokenType.Null ? (DateTime?)DateTime.Parse(t["updated_at"].ToString()) : null
+            };
         }
     }
 }
