@@ -7,6 +7,8 @@ using DualMind.API.Core.Models;
 using DualMind.API.Core.Services;
 using DualMind.API.AI.Contracts;
 using DualMind.API.AI.Gateway;
+using DualMind.API.Core.Exceptions;
+using DualMind.API.Infrastructure.Configuration;
 using Newtonsoft.Json;
 using System.Net.Http;
 using System.Collections.Generic;
@@ -131,7 +133,7 @@ namespace DualMind.API.Controllers.Api
                     Message = contentText,
                     Model = new ModelInfo
                     {
-                        Name = finalModel,
+                        Name = modelInfo?.Name ?? finalModel,
                         DisplayName = modelInfo?.DisplayName ?? finalModel,
                         Provider = modelInfo?.Provider ?? "Unknown"
                     },
@@ -281,7 +283,7 @@ namespace DualMind.API.Controllers.Api
                     Message = contentText1,
                     Model = new ModelInfo
                     {
-                        Name = finalModel1,
+                        Name = modelInfo1?.Name ?? finalModel1,
                         DisplayName = modelInfo1?.DisplayName ?? finalModel1,
                         Provider = modelInfo1?.Provider ?? "Unknown"
                     },
@@ -314,7 +316,7 @@ namespace DualMind.API.Controllers.Api
                     Message = contentText2,
                     Model = new ModelInfo
                     {
-                        Name = finalModel2,
+                        Name = modelInfo2?.Name ?? finalModel2,
                         DisplayName = modelInfo2?.DisplayName ?? finalModel2,
                         Provider = modelInfo2?.Provider ?? "Unknown"
                     },
@@ -529,66 +531,110 @@ namespace DualMind.API.Controllers.Api
         {
             var info = _modelSelector.GetModelInfo(model);
             var providerName = info?.Provider ?? "groq";
-
+            var targetModelName = info?.Name ?? model;
             try
             {
-                // GetProvider now always returns a provider (falls back to Groq if not found)
+                // GetProvider routes everything through the single dynamic provider
                 var provider = _chatProviderFactory.GetProvider(providerName);
-                
-                // Add Timeout of 45 seconds (increased from 20s to be safe for deep reasoning models if any)
-                // But "decades" implies infinite hang. 45s is reasonable.
-                var chatTask = provider.ChatAsync(model, prompt, system, maxTokens, temperature);
-                var timeoutTask = Task.Delay(45000);
+
+                var chatTask = provider.ChatAsync(targetModelName, prompt, system, maxTokens, temperature);
+                var timeoutTask = Task.Delay(60000);
 
                 var completedTask = await Task.WhenAny(chatTask, timeoutTask);
-                if (completedTask == chatTask)
+                var isTimeout = completedTask == timeoutTask;
+                if (isTimeout)
+                {
+                    _logger.LogWarning($"Provider '{providerName}' timed out for model '{model}' after 60s. Falling back to basic model.");
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                }
+
+                // If we reach here, chatTask completed successfully
+                try
                 {
                     var response = await chatTask;
                     return (response, model);
                 }
+                catch (ProviderExhaustedException pex)
+                {
+                    if (providerName != "groq")
+                    {
+                        _logger.LogWarning(pex, $"Provider '{providerName}' exhausted for model '{model}'. Falling back to basic model.");
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    }
+                    else
+                    {
+                        _logger.LogError(pex, $"Groq provider exhausted for model '{model}'. Falling back to basic model.");
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (providerName != "groq")
+                    {
+                        _logger.LogWarning(ex, $"Provider '{providerName}' failed for model '{model}'. Falling back to basic model.");
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    }
+                    else
+                    {
+                        _logger.LogError(ex, $"Groq provider failed for model '{model}'. Falling back to basic model.");
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    }
+                }
+            }
+            catch (ProviderExhaustedException pex)
+            {
+                if (providerName != "groq")
+                {
+                    _logger.LogWarning(pex, $"Provider '{providerName}' exhausted during setup for model '{model}'. Falling back to basic model.");
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                }
                 else
                 {
-                    throw new TimeoutException($"Provider '{providerName}' timed out after 45s");
+                    _logger.LogError(pex, $"Groq provider exhausted during setup for model '{model}'. Falling back to basic model.");
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
                 }
             }
             catch (Exception ex)
             {
-                // Enhanced Fallback Logic:
-                // If the provider was NOT Groq, or if any error occurs, try to fallback to Groq using a safe model.
-                if (!providerName.Equals("groq", StringComparison.OrdinalIgnoreCase))
+                if (providerName != "groq")
                 {
-                    try
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Provider '{providerName}' failed for model '{model}', falling back to Groq: {ex.Message}");
-                        var fallbackModel = Infrastructure.Configuration.EnvConfig.DefaultGroqModel;
-                        var groq = _chatProviderFactory.GetGroqProvider();
-                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
-                        return (response, fallbackModel);
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        // If fallback also fails, log and rethrow
-                        System.Diagnostics.Debug.WriteLine($"Groq fallback also failed: {fallbackEx.Message}");
-                        throw new Exception($"Both primary provider '{providerName}' and Groq fallback failed. Original: {ex.Message}, Fallback: {fallbackEx.Message}", ex);
-                    }
+                    // General fallback for any setup errors
+                    _logger.LogWarning(ex, $"Setup error for model '{model}'. Falling back to basic model.");
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
                 }
                 else
                 {
-                    // If Groq itself failed, try with a different Groq model as last resort
-                    try
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Groq failed for model '{model}', trying alternative Groq model: {ex.Message}");
-                        var fallbackModel = Infrastructure.Configuration.EnvConfig.DefaultGroqModel;
-                        var groq = _chatProviderFactory.GetGroqProvider();
-                        var response = await groq.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
-                        return (response, fallbackModel);
-                    }
-                    catch
-                    {
-                        // If all fails, rethrow original
-                        throw;
-                    }
+                    _logger.LogError(ex, $"Setup error for model '{model}'. Falling back to basic model.");
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
                 }
+            }
+        }
+
+        private async Task<(GroqResponse Response, string UsedModel)> FallbackToBasicModelAsync(string originalModel, string prompt, string system, int? maxTokens, double? temperature)
+        {
+            var fallbackModel = EnvConfig.BasicFallbackModel;
+            _logger.LogInformation($"Groq fallback: using '{fallbackModel}' for exhausted model '{originalModel}'.");
+            try
+            {
+                var groqProvider = _chatProviderFactory.GetProvider("groq");
+                var response = await groqProvider.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
+                // Prepend system message indicating fallback
+                response.Message = $"[System Note]: The original model '{originalModel}' was unreachable. Showing response from basic fallback model '{fallbackModel}'.\n\n{response.Message}";
+                // Return with original model label so the UI displays the intended model name
+                response.Model = originalModel;
+                return (response, originalModel);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Groq fallback also failed for model '{originalModel}'.");
+                return (new GroqResponse
+                {
+                    Message = $"[System]: The model '{originalModel}' and its fallback are both temporarily unavailable. Please try again later.",
+                    Model = originalModel,
+                    PromptTokens = 0,
+                    CompletionTokens = 0,
+                    TotalTokens = 0
+                }, originalModel);
             }
         }
     }
