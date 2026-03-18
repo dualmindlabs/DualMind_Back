@@ -75,12 +75,35 @@ namespace DualMind.API.Infrastructure.Data
 
             if (!response.IsSuccessStatusCode)
             {
+                if (response.StatusCode == HttpStatusCode.NotAcceptable && IsNoRowsResponse(content))
+                    return default;
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                     return default;
                 throw new Exception($"Supabase error: {content}");
             }
 
             return JsonConvert.DeserializeObject<T>(content);
+        }
+
+        private static bool IsNoRowsResponse(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+                return false;
+
+            try
+            {
+                var body = JObject.Parse(content);
+                var details = body["details"]?.ToString();
+                var code = body["code"]?.ToString();
+
+                return string.Equals(code, "PGRST116", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(details)
+                    && details.Contains("0 rows", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public async Task<T> InsertAsync<T>(string table, object data)

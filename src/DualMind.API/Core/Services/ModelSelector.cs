@@ -5,20 +5,29 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using DualMind.API.Infrastructure.Data;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 namespace DualMind.API.Core.Services
 {
     public class ModelSelector : IModelSelector
     {
+        private static readonly HashSet<string> SupportedProviders = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "groq",
+            "google"
+        };
+
         private readonly ISupabaseService _supabase;
         private readonly IMemoryCache _cache;
+        private readonly ILogger<ModelSelector> _logger;
         private readonly Random _random = new Random();
         private const string CacheKey = "ai_models_cache";
 
-        public ModelSelector(ISupabaseService supabase, IMemoryCache cache)
+        public ModelSelector(ISupabaseService supabase, IMemoryCache cache, ILogger<ModelSelector> logger)
         {
             _supabase = supabase;
             _cache = cache;
+            _logger = logger;
         }
 
         private async Task<List<ModelDefinition>> LoadModelsAsync(bool force = false)
@@ -34,7 +43,7 @@ namespace DualMind.API.Core.Services
                 "status=eq.active&order=created_at.desc"
             );
 
-            var list = (rows ?? new List<JObject>())
+            var allModels = (rows ?? new List<JObject>())
                 .Select(r => new ModelDefinition
                 {
                     Id = r["model_id"]?.ToString(),
@@ -43,6 +52,22 @@ namespace DualMind.API.Core.Services
                     Provider = r["provider_name"]?.ToString()
                 })
                 .Where(m => !string.IsNullOrWhiteSpace(m.Name))
+                .ToList();
+
+            var unsupportedModels = allModels
+                .Where(m => !string.IsNullOrWhiteSpace(m.Provider) && !SupportedProviders.Contains(m.Provider))
+                .ToList();
+
+            if (unsupportedModels.Count > 0)
+            {
+                _logger.LogWarning(
+                    "Ignoring {Count} active models with unsupported providers: {Providers}",
+                    unsupportedModels.Count,
+                    string.Join(", ", unsupportedModels.Select(m => m.Provider).Distinct(StringComparer.OrdinalIgnoreCase)));
+            }
+
+            var list = allModels
+                .Where(m => string.IsNullOrWhiteSpace(m.Provider) || SupportedProviders.Contains(m.Provider))
                 .ToList();
 
             var cacheEntryOptions = new MemoryCacheEntryOptions()
@@ -97,7 +122,7 @@ namespace DualMind.API.Core.Services
         {
             var models = await LoadModelsAsync();
             if (models.Count == 0)
-                throw new InvalidOperationException("No active models found in Supabase (ai_models)");
+                throw new InvalidOperationException("No active models found for the providers supported by this backend.");
 
             var index = _random.Next(models.Count);
             return models[index].Name;
@@ -107,7 +132,7 @@ namespace DualMind.API.Core.Services
         {
             var models = await LoadModelsAsync();
             if (models.Count < 2)
-                throw new InvalidOperationException("Need at least 2 active models in Supabase (ai_models)");
+                throw new InvalidOperationException("Need at least 2 active models from supported providers to run a battle.");
 
             var shuffled = models.OrderBy(_ => _random.Next()).Take(2).ToList();
             return (shuffled[0].Name, shuffled[1].Name);

@@ -123,6 +123,7 @@ yarn-error.log
 
 # Environment Variables
 .env
+.codex/
 
 # Verification Demo
 verification_demo/node_modules/
