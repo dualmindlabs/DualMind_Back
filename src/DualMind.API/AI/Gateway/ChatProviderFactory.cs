@@ -8,11 +8,16 @@ namespace DualMind.API.AI.Gateway
     {
         private readonly GroqService _groqService;
         private readonly GoogleService _googleService;
+        private readonly CloudflareWorkersAiService _cloudflareWorkersAiService;
 
-        public ChatProviderFactory(GroqService groqService, GoogleService googleService)
+        public ChatProviderFactory(
+            GroqService groqService,
+            GoogleService googleService,
+            CloudflareWorkersAiService cloudflareWorkersAiService)
         {
             _groqService = groqService;
             _googleService = googleService;
+            _cloudflareWorkersAiService = cloudflareWorkersAiService;
         }
 
         public IChatProvider GetProvider(string providerName)
@@ -22,8 +27,11 @@ namespace DualMind.API.AI.Gateway
 
             return providerName.ToLower() switch
             {
+                "cloudflare" => _cloudflareWorkersAiService,
                 "google" => _googleService,
+                "google-ai-studio" => _googleService,
                 "groq" => _groqService,
+                "workers-ai" => _cloudflareWorkersAiService,
                 _ => _groqService // Default fallback
             };
         }

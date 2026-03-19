@@ -1,14 +1,15 @@
 using System;
+using DualMind.API.Bot;
 using DualMind.API.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 
-var builder = WebApplication.CreateBuilder(args);
-
 // Load .env
 EnvConfig.Load();
+
+var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -165,6 +166,10 @@ builder.Services.AddHttpClient<DualMind.API.AI.Providers.GoogleService>(client =
 {
     client.Timeout = TimeSpan.FromSeconds(45);
 });
+builder.Services.AddHttpClient<DualMind.API.AI.Providers.CloudflareWorkersAiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 
 builder.Services.AddScoped<DualMind.API.AI.Gateway.IChatProviderFactory, DualMind.API.AI.Gateway.ChatProviderFactory>();
 builder.Services.AddMemoryCache();
@@ -178,6 +183,7 @@ builder.Services.AddScoped<DualMind.API.Core.Services.IComparisonLogger, DualMin
 builder.Services.AddScoped<DualMind.API.Core.Services.IMessageLogger, DualMind.API.Core.Services.MessageLogger>();
 builder.Services.AddScoped<DualMind.API.Core.Services.IUserSyncService, DualMind.API.Core.Services.UserSyncService>();
 builder.Services.AddScoped<DualMind.API.Core.Services.ISystemSettingsService, DualMind.API.Core.Services.SystemSettingsService>();
+builder.Services.AddTelegramBot(builder.Configuration);
 
 // Register Admin Services
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.IAdminSupabaseClient, DualMind.API.Infrastructure.Data.AdminSupabaseClient>();

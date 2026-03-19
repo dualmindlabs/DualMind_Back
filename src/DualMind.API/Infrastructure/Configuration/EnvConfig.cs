@@ -43,5 +43,12 @@ namespace DualMind.API.Infrastructure.Configuration
         public static string AppSecret => Get("APP_SECRET");
         public static string DefaultGroqModel => Get("DEFAULT_GROQ_MODEL", "llama-3.3-70b-versatile");
         public static string BasicFallbackModel => Get("BASIC_FALLBACK_MODEL", "llama-3.1-8b-instant");
+        public static string CloudflareAiGatewayAccountId => Get("CLOUDFLARE_AI_GATEWAY_ACCOUNT_ID");
+        public static string CloudflareAiGatewayId => Get("CLOUDFLARE_AI_GATEWAY_ID");
+        public static string CloudflareAiGatewayToken => Get("CLOUDFLARE_AI_GATEWAY_TOKEN");
+        public static string CloudflareWorkersAiApiToken => Get("CLOUDFLARE_WORKERS_AI_API_TOKEN");
+        public static string DefaultCloudflareWorkersAiModel => Get("DEFAULT_CLOUDFLARE_WORKERS_AI_MODEL", "@cf/meta/llama-3.1-8b-instruct");
+        public static bool CloudflareAiGatewayUseByok =>
+            string.Equals(Get("CLOUDFLARE_AI_GATEWAY_USE_BYOK", "false"), "true", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -21,6 +21,16 @@ namespace DualMind.API.Core.Services
         {
             try
             {
+                var allModels = _modelSelector.GetAllModels();
+                var availableNames = new HashSet<string>(
+                    allModels.Select(m => m.Name),
+                    StringComparer.OrdinalIgnoreCase);
+
+                if (availableNames.Count < 2)
+                {
+                    return await _modelSelector.GetTwoRandomModelsAsync();
+                }
+
                 var stats = await _modelStatsService.GetModelStatsAsync();
 
                 if (stats == null || stats.Count == 0)
@@ -28,13 +38,16 @@ namespace DualMind.API.Core.Services
                     return await _modelSelector.GetTwoRandomModelsAsync();
                 }
 
-                var topModel = stats.OrderByDescending(s => s.WinRate).FirstOrDefault();
+                var topModel = stats
+                    .Where(s => !string.IsNullOrWhiteSpace(s.ModelName) && availableNames.Contains(s.ModelName))
+                    .OrderByDescending(s => s.WinRate)
+                    .FirstOrDefault();
+
                 if (topModel == null)
                 {
                     return await _modelSelector.GetTwoRandomModelsAsync();
                 }
 
-                var allModels = _modelSelector.GetAllModels();
                 var otherModels = allModels
                     .Where(m => !m.Name.Equals(topModel.ModelName, StringComparison.OrdinalIgnoreCase))
                     .ToList();
