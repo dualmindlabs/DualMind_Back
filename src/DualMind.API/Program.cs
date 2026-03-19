@@ -166,6 +166,10 @@ builder.Services.AddHttpClient<DualMind.API.AI.Providers.GoogleService>(client =
 {
     client.Timeout = TimeSpan.FromSeconds(45);
 });
+builder.Services.AddHttpClient<DualMind.API.AI.Providers.CloudflareWorkersAiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 
 builder.Services.AddScoped<DualMind.API.AI.Gateway.IChatProviderFactory, DualMind.API.AI.Gateway.ChatProviderFactory>();
 builder.Services.AddMemoryCache();

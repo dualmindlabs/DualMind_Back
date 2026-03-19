@@ -40,6 +40,14 @@ public class ModelSelectorTests
                 display_name = "Gemini 2.0 Flash",
                 provider_name = "google",
                 status = "active"
+            }),
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "@cf/meta/llama-3.1-8b-instruct",
+                display_name = "llama-3.1-8b-instruct",
+                provider_name = "cloudflare",
+                status = "active"
             })
         });
 
@@ -49,8 +57,79 @@ public class ModelSelectorTests
         await selector.GetTwoRandomModelsAsync();
         var allModels = selector.GetAllModels();
 
-        Assert.Equal(2, allModels.Count);
+        Assert.Equal(3, allModels.Count);
+        Assert.Contains(allModels, model => string.Equals(model.Provider, "cloudflare", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(allModels, model => string.Equals(model.Provider, "openrouter", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task GetRandomModelAsync_ExcludesCloudflareManualOnlyModels()
+    {
+        var supabase = new FakeModelSupabaseService(new List<JObject>
+        {
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "@cf/meta/llama-3.1-8b-instruct",
+                display_name = "llama-3.1-8b-instruct",
+                provider_name = "cloudflare",
+                status = "active"
+            }),
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "llama-3.3-70b-versatile",
+                display_name = "Llama 3.3 70B",
+                provider_name = "groq",
+                status = "active"
+            })
+        });
+
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var selector = new ModelSelector(supabase, cache, NullLogger<ModelSelector>.Instance);
+
+        var selected = await selector.GetRandomModelAsync();
+
+        Assert.Equal("llama-3.3-70b-versatile", selected);
+    }
+
+    [Fact]
+    public async Task GetTwoRandomModelsAsync_ExcludesCloudflareManualOnlyModels()
+    {
+        var supabase = new FakeModelSupabaseService(new List<JObject>
+        {
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "@cf/meta/llama-3.1-8b-instruct",
+                display_name = "llama-3.1-8b-instruct",
+                provider_name = "cloudflare",
+                status = "active"
+            }),
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "llama-3.3-70b-versatile",
+                display_name = "Llama 3.3 70B",
+                provider_name = "groq",
+                status = "active"
+            }),
+            JObject.FromObject(new
+            {
+                model_id = Guid.NewGuid().ToString(),
+                model_name = "gemini-2.0-flash",
+                display_name = "Gemini 2.0 Flash",
+                provider_name = "google",
+                status = "active"
+            })
+        });
+
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var selector = new ModelSelector(supabase, cache, NullLogger<ModelSelector>.Instance);
+
+        var selected = await selector.GetTwoRandomModelsAsync();
+
+        Assert.DoesNotContain("@cf/meta/llama-3.1-8b-instruct", new[] { selected.model1, selected.model2 });
     }
 
     private sealed class FakeModelSupabaseService : ISupabaseService

@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ namespace DualMind.API.AI.Providers
         private readonly Core.Services.IProviderConfigService _config;
         private readonly Core.Services.ProviderErrorClassifier _classifier;
         private readonly ILogger<GroqService> _logger;
+        private readonly CloudflareAiGatewaySettings _aiGateway;
         private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
         private const string GroqSpeechApiUrl = "https://api.groq.com/openai/v1/audio/speech";
 
@@ -28,6 +30,7 @@ namespace DualMind.API.AI.Providers
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _classifier = new Core.Services.ProviderErrorClassifier();
+            _aiGateway = CloudflareAiGatewaySettings.FromEnv();
 
             // Check for GROQ_API_KEY in environment variables first (from .env or Azure secrets)
             _envApiKey = EnvConfig.GroqApiKey;
@@ -40,9 +43,14 @@ namespace DualMind.API.AI.Providers
             {
                 _logger.LogInformation("GroqService: No GROQ_API_KEY found in environment, will use database keys");
             }
+
+            if (_aiGateway.Enabled)
+            {
+                _logger.LogInformation("GroqService: Cloudflare AI Gateway enabled for chat requests. BYOK mode: {UseByok}", _aiGateway.UseByok);
+            }
         }
 
-        private async Task<T> ExecuteWithRetryAsync<T>(Func<string, Task<T>> action)
+        private async Task<T> ExecuteWithProviderRetryAsync<T>(Func<string, Task<T>> action)
         {
             // Priority 1: Use environment variable API key if available (local .env or Azure secrets)
             if (!string.IsNullOrEmpty(_envApiKey))
@@ -116,11 +124,39 @@ namespace DualMind.API.AI.Providers
             }
         }
 
+        private async Task<T> ExecuteChatAsync<T>(Func<string, Task<T>> action)
+        {
+            _aiGateway.EnsureGatewayConfiguredForChat("Groq");
+
+            if (_aiGateway.Enabled && _aiGateway.UseByok)
+            {
+                return await action(_aiGateway.Token!);
+            }
+
+            return await ExecuteWithProviderRetryAsync(action);
+        }
+
+        private void ApplyChatHeaders(HttpRequestMessage request, string credential)
+        {
+            if (_aiGateway.Enabled && !string.IsNullOrWhiteSpace(_aiGateway.Token))
+            {
+                request.Headers.TryAddWithoutValidation("cf-aig-authorization", $"Bearer {_aiGateway.Token}");
+            }
+
+            if (_aiGateway.Enabled && _aiGateway.UseByok)
+            {
+                return;
+            }
+
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        }
+
         public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
         {
-            var targetUrl = GroqApiUrl;
+            var targetUrl = _aiGateway.Enabled ? _aiGateway.ChatCompletionsUrl : GroqApiUrl;
+            var routedModel = _aiGateway.Enabled ? _aiGateway.GetCompatModel("groq", model) : model;
 
-            return await ExecuteWithRetryAsync(async (apiKey) =>
+            return await ExecuteChatAsync(async (credential) =>
             {
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(systemPrompt)) messages.Add(new { role = "system", content = systemPrompt });
@@ -128,7 +164,7 @@ namespace DualMind.API.AI.Providers
 
                 var requestBody = new
                 {
-                    model = model,
+                    model = routedModel,
                     messages = messages,
                     max_tokens = maxTokens ?? 4096,
                     temperature = temperature ?? 0.7
@@ -137,7 +173,7 @@ namespace DualMind.API.AI.Providers
                 var json = JsonConvert.SerializeObject(requestBody);
 
                 var requestMsg = new HttpRequestMessage(HttpMethod.Post, targetUrl);
-                requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                ApplyChatHeaders(requestMsg, credential);
                 requestMsg.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 using (var response = await _client.SendAsync(requestMsg))
@@ -170,7 +206,7 @@ namespace DualMind.API.AI.Providers
 
         public async Task<byte[]> GenerateSpeechAsync(string text, string voice = "Celeste-PlayAI")
         {
-             return await ExecuteWithRetryAsync(async (apiKey) =>
+             return await ExecuteWithProviderRetryAsync(async (apiKey) =>
             {
                 var requestBody = new
                 {
@@ -203,18 +239,19 @@ namespace DualMind.API.AI.Providers
 
         public async Task StreamAsync(ChatRequest request, Func<AIStreamEvent, Task> onEvent, System.Threading.CancellationToken cancellationToken)
         {
-             // For streaming, we just use ExecuteWithRetryAsync but it returns empty Task.
+             // For streaming, we just use the same chat credential path but it returns an empty Task.
              // The stream processing happens inside the action.
-             await ExecuteWithRetryAsync<bool>(async (apiKey) =>
+             await ExecuteChatAsync<bool>(async (credential) =>
              {
                 var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? EnvConfig.DefaultGroqModel : request.Model;
+                var routedModel = _aiGateway.Enabled ? _aiGateway.GetCompatModel("groq", model) : model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
                 messages.Add(new { role = "user", content = request.Prompt });
 
                 var requestBody = new
                 {
-                    model = model,
+                    model = routedModel,
                     messages = messages,
                     max_tokens = request.MaxTokens ?? 4096,
                     temperature = request.Temperature ?? 0.7,
@@ -222,8 +259,8 @@ namespace DualMind.API.AI.Providers
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl);
-                httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, _aiGateway.Enabled ? _aiGateway.ChatCompletionsUrl : GroqApiUrl);
+                ApplyChatHeaders(httpRequest, credential);
                 httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
 

@@ -13,8 +13,14 @@ namespace DualMind.API.Core.Services
     {
         private static readonly HashSet<string> SupportedProviders = new(StringComparer.OrdinalIgnoreCase)
         {
+            "cloudflare",
             "groq",
             "google"
+        };
+
+        private static readonly HashSet<string> ManualOnlyProviders = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cloudflare"
         };
 
         private readonly ISupabaseService _supabase;
@@ -120,9 +126,9 @@ namespace DualMind.API.Core.Services
 
         private async Task<string> GetRandomModelInternalAsync()
         {
-            var models = await LoadModelsAsync();
+            var models = GetAutoSelectableModels(await LoadModelsAsync());
             if (models.Count == 0)
-                throw new InvalidOperationException("No active models found for the providers supported by this backend.");
+                throw new InvalidOperationException("No auto-selectable models found. Cloudflare models are manual-only, so keep at least one active Groq or Google model.");
 
             var index = _random.Next(models.Count);
             return models[index].Name;
@@ -130,12 +136,19 @@ namespace DualMind.API.Core.Services
 
         private async Task<(string model1, string model2)> GetTwoRandomModelsInternalAsync()
         {
-            var models = await LoadModelsAsync();
+            var models = GetAutoSelectableModels(await LoadModelsAsync());
             if (models.Count < 2)
-                throw new InvalidOperationException("Need at least 2 active models from supported providers to run a battle.");
+                throw new InvalidOperationException("Need at least 2 auto-selectable models to run a battle. Cloudflare models are manual-only.");
 
             var shuffled = models.OrderBy(_ => _random.Next()).Take(2).ToList();
             return (shuffled[0].Name, shuffled[1].Name);
+        }
+
+        private static List<ModelDefinition> GetAutoSelectableModels(IEnumerable<ModelDefinition> models)
+        {
+            return models
+                .Where(m => string.IsNullOrWhiteSpace(m.Provider) || !ManualOnlyProviders.Contains(m.Provider))
+                .ToList();
         }
     }
 

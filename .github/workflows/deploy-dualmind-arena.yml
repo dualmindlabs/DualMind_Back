@@ -28,13 +28,13 @@ jobs:
         run: dotnet build src/DualMind.API/DualMind.API.csproj --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+        run: dotnet publish src/DualMind.API/DualMind.API.csproj -c Release -o ./publish
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: "${{env.DOTNET_ROOT}}/myapp"
+          path: ./publish
 
   deploy:
     runs-on: windows-latest
@@ -47,6 +47,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
+          path: ./publish
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
@@ -55,4 +56,4 @@ jobs:
           app-name: 'dualmind-arena'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-          package: .
+          package: ./publish
