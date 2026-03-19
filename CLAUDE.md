@@ -78,13 +78,16 @@ On app start, model cache warm-up runs in background by calling `IModelSelector.
 | `src/DualMind.API/Controllers/ThreadsController.cs` | Thread CRUD, messages, visibility/public sharing access logic |
 | `src/DualMind.API/Controllers/SettingsController.cs` | Feature flag read endpoint |
 | `src/DualMind.API/Controllers/SpeechController.cs` | TTS generation endpoint |
+| `src/DualMind.API/Controllers/Api/EnergyController.cs` | Energy balance and video claim endpoints |
 | `src/DualMind.API/Core/Services/ModelSelector.cs` | Active model cache + random model/pair selection |
 | `src/DualMind.API/Core/Services/LeaderboardModelSelector.cs` | Topper-vs-random pairing strategy |
 | `src/DualMind.API/Core/Services/ModelStatsService.cs` | Reads `v_leaderboard`, writes votes, reveal flow |
+| `src/DualMind.API/Core/Services/WagerService.cs` | High stakes energy wagering and result calculation |
 | `src/DualMind.API/Core/Services/ThreadMessagesService.cs` | Thread message persistence + vote state hydration |
 | `src/DualMind.API/Core/Services/ThreadsService.cs` | Thread CRUD + visibility updates |
 | `src/DualMind.API/Core/Services/ProviderConfigService.cs` | Provider/key cache, key rotation and cooldown tracking |
 | `src/DualMind.API/Core/Services/UserSyncService.cs` | Upserts users into `public.users` |
+| `src/DualMind.API/Core/Services/EnergyService.cs` | Handles gamified energy state, RPC additions, and battle consumption |
 | `src/DualMind.API/Infrastructure/Data/SupabaseService.cs` | Generic PostgREST service client |
 | `src/DualMind.API/Infrastructure/Data/AdminSupabaseClient.cs` | Admin PostgREST client |
 | `src/DualMind.API/Core/Models/AdminModels.cs` | Admin-facing DTOs for users/models/comparisons/votes/threads/messages |
@@ -123,6 +126,9 @@ On app start, model cache warm-up runs in background by calling `IModelSelector.
 | DELETE | `/api/threads/{threadId}` | Requires auth + ownership |
 | GET | `/api/settings/feature-flag/{key}` | AllowAnonymous |
 | POST | `/api/speech/generate` | No `[Authorize]` on controller |
+| GET | `/api/energy/balance` | Requires auth |
+| POST | `/api/energy/claim-video` | Requires auth |
+| POST | `/api/arena/wager-vote` | Requires auth |
 
 ### Admin APIs
 
@@ -166,6 +172,9 @@ On app start, model cache warm-up runs in background by calling `IModelSelector.
 #### `ai_models`
 `model_id`, `model_name`, `display_name`, `provider_name`, `is_free`, `status`, `created_at`
 
+#### `users`
+Includes new energy system columns: `energy_balance`, `last_energy_refill_date`, `has_claimed_demo_video`
+
 #### `threads`
 `thread_id`, `user_id`, `title`, `mode`, `visibility`, `message_count`, `created_at`, `updated_at`
 
@@ -191,10 +200,11 @@ Service currently reads `key` + `is_enabled` (with fallback parsing from `value`
 1. **`provider_name` must be lowercase** when writing `ai_models` / provider-linked records.
 2. **Blind vote read path** uses `v_comparisons_masked` before vote write.
 3. **Vote timestamp column is `voted_at`** (not `created_at`).
-4. **Thread messages use denormalized model names** (`model1_name` / `model2_name`) and `position` ordering.
-5. **Model selection is currently in-memory random from cached active models** (5-minute cache), not pair-stat SQL matchmaking.
-6. **Topper mode** = highest `win_rate` from `v_leaderboard` + one random other model.
-7. **Thread sharing logic**:
+4. **Wager flow and DB operations** must execute `InsertAsync` and `UpdateAsync` on database rows *before* adding any `AddEnergyAsync` rewards, to prevent double-voting/farming exploits on failure conditions. Queries reading comparisons for wager checks must always include `&user_id=eq.{userId}&is_revealed=eq.false`.
+5. **Thread messages use denormalized model names** (`model1_name` / `model2_name`) and `position` ordering.
+6. **Model selection is currently in-memory random from cached active models** (5-minute cache), not pair-stat SQL matchmaking.
+7. **Topper mode** = highest `win_rate` from `v_leaderboard` + one random other model.
+8. **Thread sharing logic**:
    - Feature flag key: `public_sharing`
    - Visibility values: `private`, `public`, `unlisted`
    - Anonymous access allowed for `GetThread` + `GetThreadMessages` only when sharing enabled and visibility is public/unlisted.
@@ -218,7 +228,7 @@ Service currently reads `key` + `is_enabled` (with fallback parsing from `value`
 var comps = await _supabase.SelectAsync<JObject>(
     "v_comparisons_masked",
     "comparison_id,model1_id,model2_id",
-    $"comparison_id=eq.{comparisonId}"
+    $"comparison_id=eq.{comparisonId}&user_id=eq.{userId}&is_revealed=eq.false"
 );
 
 await _supabase.InsertAsync<object>("model_votes", new {
@@ -233,6 +243,8 @@ await _supabase.InsertAsync<object>("model_votes", new {
 await _supabase.UpdateAsync<object>("comparisons",
     new { is_revealed = true },
     $"comparison_id=eq.{comparisonId}");
+
+// IF wager flow -> add energy rewards ONLY HERE (after db commits succeed).
 ```
 
 ### Read leaderboard

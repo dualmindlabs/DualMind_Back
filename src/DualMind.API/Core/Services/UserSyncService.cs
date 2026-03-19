@@ -37,9 +37,7 @@ namespace DualMind.API.Core.Services
                     email = safeEmail,
                     full_name = string.IsNullOrWhiteSpace(fullName)
                         ? safeEmail.Split('@')[0] // Fallback to email prefix
-                        : fullName,
-                    role = "user"
-                    // created_at = DateTime.UtcNow // Exclude created_at from upsert to preserve original value
+                        : fullName
                 };
 
                 await _supabase.UpsertAsync<object>("users", user);

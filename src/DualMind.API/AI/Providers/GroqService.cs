@@ -54,8 +54,8 @@ namespace DualMind.API.AI.Providers
                 catch (Exception ex)
                 {
                     // If env key fails with auth error, don't retry - it's likely invalid
-                    var response = ex.Data.Contains("HttpResponse") ? ex.Data["HttpResponse"] as HttpResponseMessage : null;
-                    var errorType = _classifier.Classify(ex, response);
+                    var responseBody = ex.Data.Contains("HttpResponse") ? ex.Data["HttpResponse"] as HttpResponseMessage : null;
+                    var errorType = _classifier.Classify(ex, responseBody);
 
                     if (errorType == Core.Services.ProviderErrorType.Auth)
                     {
@@ -92,8 +92,8 @@ namespace DualMind.API.AI.Providers
                 }
                 catch (Exception ex)
                 {
-                    var response = ex.Data.Contains("HttpResponse") ? ex.Data["HttpResponse"] as HttpResponseMessage : null;
-                    var errorType = _classifier.Classify(ex, response);
+                    var responseBody = ex.Data.Contains("HttpResponse") ? ex.Data["HttpResponse"] as HttpResponseMessage : null;
+                    var errorType = _classifier.Classify(ex, responseBody);
                     await _config.ReportKeyFailureAsync(key.KeyId, errorType);
 
                     if (errorType == Core.Services.ProviderErrorType.Auth ||
@@ -116,7 +116,7 @@ namespace DualMind.API.AI.Providers
             }
         }
 
-        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
+        public async Task<GroqResponse> ChatAsync(string model, string prompt, string? systemPrompt = null, int? maxTokens = null, double? temperature = null, List<ChatMessageHistory>? history = null)
         {
             var targetUrl = GroqApiUrl;
 
@@ -124,6 +124,18 @@ namespace DualMind.API.AI.Providers
             {
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(systemPrompt)) messages.Add(new { role = "system", content = systemPrompt });
+
+                if (history != null && history.Count > 0)
+                {
+                    foreach (var msg in history)
+                    {
+                        if (!string.IsNullOrEmpty(msg.Content) && !string.IsNullOrEmpty(msg.Role))
+                        {
+                            messages.Add(new { role = msg.Role, content = msg.Content });
+                        }
+                    }
+                }
+
                 messages.Add(new { role = "user", content = prompt });
 
                 var requestBody = new
@@ -136,7 +148,7 @@ namespace DualMind.API.AI.Providers
 
                 var json = JsonConvert.SerializeObject(requestBody);
 
-                var requestMsg = new HttpRequestMessage(HttpMethod.Post, targetUrl);
+                using var requestMsg = new HttpRequestMessage(HttpMethod.Post, targetUrl);
                 requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 requestMsg.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -181,7 +193,7 @@ namespace DualMind.API.AI.Providers
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);
-                var requestMsg = new HttpRequestMessage(HttpMethod.Post, GroqSpeechApiUrl);
+                using var requestMsg = new HttpRequestMessage(HttpMethod.Post, GroqSpeechApiUrl);
                 requestMsg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 requestMsg.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -210,6 +222,18 @@ namespace DualMind.API.AI.Providers
                 var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? EnvConfig.DefaultGroqModel : request.Model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
+
+                if (request.History != null && request.History.Count > 0)
+                {
+                    foreach (var msg in request.History)
+                    {
+                        if (!string.IsNullOrEmpty(msg.Content) && !string.IsNullOrEmpty(msg.Role))
+                        {
+                            messages.Add(new { role = msg.Role, content = msg.Content });
+                        }
+                    }
+                }
+
                 messages.Add(new { role = "user", content = request.Prompt });
 
                 var requestBody = new
@@ -222,7 +246,7 @@ namespace DualMind.API.AI.Providers
                 };
 
                 var json = JsonConvert.SerializeObject(requestBody);
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl);
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl);
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 httpRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));

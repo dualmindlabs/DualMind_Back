@@ -14,6 +14,7 @@ using System.Net.Http;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
+using DualMind.API.Infrastructure.Data;
 
 namespace DualMind.API.Controllers.Api
 {
@@ -29,6 +30,8 @@ namespace DualMind.API.Controllers.Api
         private readonly IComparisonLogger _comparisonLogger;
         private readonly IUserSyncService _userSyncService;
         private readonly IEnergyService _energyService;
+        private readonly IWagerService _wagerService;
+        private readonly ISupabaseService _supabase;
         private readonly ILogger<ArenaController> _logger;
 
         public ArenaController(
@@ -40,6 +43,8 @@ namespace DualMind.API.Controllers.Api
             IComparisonLogger comparisonLogger,
             IUserSyncService userSyncService,
             IEnergyService energyService,
+            IWagerService wagerService,
+            ISupabaseService supabase,
             ILogger<ArenaController> logger)
         {
             _modelSelector = modelSelector;
@@ -50,6 +55,8 @@ namespace DualMind.API.Controllers.Api
             _comparisonLogger = comparisonLogger;
             _userSyncService = userSyncService;
             _energyService = energyService;
+            _wagerService = wagerService;
+            _supabase = supabase;
             _logger = logger;
         }
 
@@ -89,6 +96,7 @@ namespace DualMind.API.Controllers.Api
         [AllowAnonymous]
         public async Task<IActionResult> Chat([FromBody] ChatRequest request)
         {
+            await BuildTinyHistoryAsync(request);
             var startTime = DateTime.UtcNow;
             var sessionId = Guid.NewGuid();
 
@@ -114,7 +122,7 @@ namespace DualMind.API.Controllers.Api
                     : "manual";
 
                 // Execute with provider factory and fallback
-                var executionResult = await ExecuteWithFallbackAsync(selectedModel, request.Prompt, request.System, request.MaxTokens, request.Temperature);
+                var executionResult = await ExecuteWithFallbackAsync(selectedModel, request.Prompt, request.System, request.MaxTokens, request.Temperature, request.History);
                 var rawResponse = executionResult.Response;
                 var finalModel = executionResult.UsedModel;
 
@@ -170,17 +178,21 @@ namespace DualMind.API.Controllers.Api
 
                     await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
 
-                    // Energy check for authenticated users
-                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
-                    if (!energyConsumed)
+                    // Energy check for authenticated users (TESTERS ONLY)
+                    var userRow = await _supabase.SelectAsync<Newtonsoft.Json.Linq.JObject>("users", "role", $"user_id=eq.{userId.Value}");
+                    if (userRow != null && userRow.Count > 0 && userRow[0]["role"]?.ToString() == "tester")
                     {
-                        return StatusCode(402, new
+                        var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
+                        if (!energyConsumed)
                         {
-                            @object = "ai.error",
-                            code = "INSUFFICIENT_ENERGY",
-                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
-                            timestamp = DateTime.UtcNow
-                        });
+                            return StatusCode(402, new
+                            {
+                                @object = "ai.error",
+                                code = "INSUFFICIENT_ENERGY",
+                                message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                                timestamp = DateTime.UtcNow
+                            });
+                        }
                     }
                 }
 
@@ -211,6 +223,7 @@ namespace DualMind.API.Controllers.Api
         [Authorize]
         public async Task<IActionResult> DualChat([FromBody] ChatRequest request)
         {
+            await BuildTinyHistoryAsync(request);
             try
             {
                 var startTime = DateTime.UtcNow;
@@ -271,8 +284,8 @@ namespace DualMind.API.Controllers.Api
                 }
 
                 // Execute parallel requests with fallback logic
-                var task1 = ExecuteWithFallbackAsync(model1, request.Prompt, request.System, request.MaxTokens, request.Temperature);
-                var task2 = ExecuteWithFallbackAsync(model2, request.Prompt, request.System, request.MaxTokens, request.Temperature);
+                var task1 = ExecuteWithFallbackAsync(model1, request.Prompt, request.System, request.MaxTokens, request.Temperature, request.History);
+                var task2 = ExecuteWithFallbackAsync(model2, request.Prompt, request.System, request.MaxTokens, request.Temperature, request.History);
 
                 await Task.WhenAll(task1, task2);
 
@@ -368,17 +381,21 @@ namespace DualMind.API.Controllers.Api
 
                     await _userSyncService.EnsureUserExistsAsync(userId.Value, email, name);
 
-                    // Energy check for authenticated users
-                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
-                    if (!energyConsumed)
+                    // Energy check for authenticated users (TESTERS ONLY)
+                    var userRow = await _supabase.SelectAsync<Newtonsoft.Json.Linq.JObject>("users", "role", $"user_id=eq.{userId.Value}");
+                    if (userRow != null && userRow.Count > 0 && userRow[0]["role"]?.ToString() == "tester")
                     {
-                        return StatusCode(402, new
+                        var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId.Value);
+                        if (!energyConsumed)
                         {
-                            @object = "ai.error",
-                            code = "INSUFFICIENT_ENERGY",
-                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
-                            timestamp = DateTime.UtcNow
-                        });
+                            return StatusCode(402, new
+                            {
+                                @object = "ai.error",
+                                code = "INSUFFICIENT_ENERGY",
+                                message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                                timestamp = DateTime.UtcNow
+                            });
+                        }
                     }
                 }
 
@@ -483,6 +500,8 @@ namespace DualMind.API.Controllers.Api
         {
             Response.ContentType = "text/event-stream";
 
+            await BuildTinyHistoryAsync(request);
+
             if (request == null || string.IsNullOrWhiteSpace(request.Prompt))
             {
                  // We can't return standard JSON error easily in SSE stream usually,
@@ -559,7 +578,43 @@ namespace DualMind.API.Controllers.Api
             }
         }
 
-        private async Task<(GroqResponse Response, string UsedModel)> ExecuteWithFallbackAsync(string model, string prompt, string system, int? maxTokens, double? temperature = null)
+        private async Task BuildTinyHistoryAsync(ChatRequest request)
+        {
+            if (request != null && request.History == null && !string.IsNullOrEmpty(request.ThreadId) && Guid.TryParse(request.ThreadId, out Guid threadIdGuid))
+            {
+                try 
+                {
+                    var pastMsgs = await _threadMessagesService.GetThreadMessagesAsync(threadIdGuid);
+                    if (pastMsgs != null && pastMsgs.Count > 0)
+                    {
+                        request.History = new List<ChatMessageHistory>();
+                        
+                        // Limit to only 2 previous exchanges to keep latency low
+                        int takeCount = 2;
+                        int startIdx = Math.Max(0, pastMsgs.Count - takeCount);
+                        
+                        for (int i = startIdx; i < pastMsgs.Count; i++)
+                        {
+                            var dbMsg = pastMsgs[i];
+                            if (!string.IsNullOrEmpty(dbMsg.PromptText))
+                            {
+                                request.History.Add(new ChatMessageHistory { Role = "user", Content = dbMsg.PromptText });
+                            }
+                            if (!string.IsNullOrEmpty(dbMsg.Model1Response))
+                            {
+                                request.History.Add(new ChatMessageHistory { Role = "assistant", Content = dbMsg.Model1Response });
+                            }
+                        }
+                    }
+                } 
+                catch (Exception ex) 
+                {
+                    _logger.LogWarning(ex, "Failed to load tiny history for thread {ThreadId}", request.ThreadId);
+                }
+            }
+        }
+
+        private async Task<(GroqResponse Response, string UsedModel)> ExecuteWithFallbackAsync(string model, string prompt, string? system, int? maxTokens, double? temperature = null, List<ChatMessageHistory>? history = null)
         {
             var info = _modelSelector.GetModelInfo(model);
             var providerName = info?.Provider ?? "groq";
@@ -569,7 +624,7 @@ namespace DualMind.API.Controllers.Api
                 // GetProvider routes everything through the single dynamic provider
                 var provider = _chatProviderFactory.GetProvider(providerName);
 
-                var chatTask = provider.ChatAsync(targetModelName, prompt, system, maxTokens, temperature);
+                var chatTask = provider.ChatAsync(targetModelName, prompt, system, maxTokens, temperature, history);
                 var timeoutTask = Task.Delay(60000);
 
                 var completedTask = await Task.WhenAny(chatTask, timeoutTask);
@@ -577,7 +632,7 @@ namespace DualMind.API.Controllers.Api
                 if (isTimeout)
                 {
                     _logger.LogWarning($"Provider '{providerName}' timed out for model '{model}' after 60s. Falling back to basic model.");
-                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                 }
 
                 // If we reach here, chatTask completed successfully
@@ -591,12 +646,12 @@ namespace DualMind.API.Controllers.Api
                     if (providerName != "groq")
                     {
                         _logger.LogWarning(pex, $"Provider '{providerName}' exhausted for model '{model}'. Falling back to basic model.");
-                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                     }
                     else
                     {
                         _logger.LogError(pex, $"Groq provider exhausted for model '{model}'. Falling back to basic model.");
-                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                     }
                 }
                 catch (Exception ex)
@@ -604,12 +659,12 @@ namespace DualMind.API.Controllers.Api
                     if (providerName != "groq")
                     {
                         _logger.LogWarning(ex, $"Provider '{providerName}' failed for model '{model}'. Falling back to basic model.");
-                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                     }
                     else
                     {
                         _logger.LogError(ex, $"Groq provider failed for model '{model}'. Falling back to basic model.");
-                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                        return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                     }
                 }
             }
@@ -618,12 +673,12 @@ namespace DualMind.API.Controllers.Api
                 if (providerName != "groq")
                 {
                     _logger.LogWarning(pex, $"Provider '{providerName}' exhausted during setup for model '{model}'. Falling back to basic model.");
-                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                 }
                 else
                 {
                     _logger.LogError(pex, $"Groq provider exhausted during setup for model '{model}'. Falling back to basic model.");
-                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                 }
             }
             catch (Exception ex)
@@ -632,24 +687,24 @@ namespace DualMind.API.Controllers.Api
                 {
                     // General fallback for any setup errors
                     _logger.LogWarning(ex, $"Setup error for model '{model}'. Falling back to basic model.");
-                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                 }
                 else
                 {
                     _logger.LogError(ex, $"Setup error for model '{model}'. Falling back to basic model.");
-                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature);
+                    return await FallbackToBasicModelAsync(model, prompt, system, maxTokens, temperature, history);
                 }
             }
         }
 
-        private async Task<(GroqResponse Response, string UsedModel)> FallbackToBasicModelAsync(string originalModel, string prompt, string system, int? maxTokens, double? temperature)
+        private async Task<(GroqResponse Response, string UsedModel)> FallbackToBasicModelAsync(string originalModel, string prompt, string? system, int? maxTokens, double? temperature, List<ChatMessageHistory>? history = null)
         {
             var fallbackModel = EnvConfig.BasicFallbackModel;
             _logger.LogInformation($"Groq fallback: using '{fallbackModel}' for exhausted model '{originalModel}'.");
             try
             {
                 var groqProvider = _chatProviderFactory.GetProvider("groq");
-                var response = await groqProvider.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature);
+                var response = await groqProvider.ChatAsync(fallbackModel, prompt, system, maxTokens, temperature, history);
                 // Prepend system message indicating fallback
                 response.Message = $"[System Note]: The original model '{originalModel}' was unreachable. Showing response from basic fallback model '{fallbackModel}'.\n\n{response.Message}";
                 // Return with original model label so the UI displays the intended model name
@@ -667,6 +722,56 @@ namespace DualMind.API.Controllers.Api
                     CompletionTokens = 0,
                     TotalTokens = 0
                 }, originalModel);
+            }
+        }
+
+        [HttpPost]
+        [Route("wager-vote")]
+        [Authorize]
+        public async Task<IActionResult> WagerVote([FromBody] WagerVoteRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.VoteChoice))
+            {
+                return BadRequest(new { success = false, message = "Invalid request payload." });
+            }
+
+            if (request.WagerAmount <= 0)
+            {
+                return BadRequest(new { success = false, message = "Wager amount must be positive." });
+            }
+
+            var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sub, out var userId))
+            {
+                return Unauthorized(new { success = false, message = "Invalid user identity." });
+            }
+
+            try
+            {
+                var userRow = await _supabase.SelectAsync<Newtonsoft.Json.Linq.JObject>("users", "role", $"user_id=eq.{userId}");
+                if (userRow == null || userRow.Count == 0 || userRow[0]["role"]?.ToString() != "tester")
+                {
+                    return StatusCode(403, new { success = false, message = "Wagering is currently available to testers only." });
+                }
+
+                var response = await _wagerService.ProcessWagerVoteAsync(userId, request);
+
+                if (!response.Success && response.Message == "Insufficient energy balance.")
+                {
+                    return StatusCode(402, response);
+                }
+
+                if (!response.Success)
+                {
+                    return BadRequest(response);
+                }
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process wager vote for {UserId}", userId);
+                return StatusCode(500, new { success = false, message = "An internal error occurred." });
             }
         }
     }

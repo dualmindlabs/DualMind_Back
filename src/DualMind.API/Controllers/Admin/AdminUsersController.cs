@@ -5,8 +5,6 @@ using System.Net.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 using Newtonsoft.Json;

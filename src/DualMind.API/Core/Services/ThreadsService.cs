@@ -39,7 +39,7 @@ namespace DualMind.API.Core.Services
             return result;
         }
 
-        public async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId, string mode = null)
+        public async Task<ThreadDto> CreateThreadAsync(string title, Guid? userId, string? mode = null)
         {
             var thread = new
             {

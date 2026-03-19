@@ -24,17 +24,8 @@ namespace DualMind.API.Core.Services
             _settings = settings;
         }
 
-        private async Task<bool> IsEnergySystemEnabledAsync()
-        {
-            // We'll rely on the default behavior of GetFeatureFlagAsync which returns false if not found.
-            // This ensures production doesn't break.
-            return await _settings.GetFeatureFlagAsync("energy_system_enabled");
-        }
-
         public async Task<int> GetEnergyBalanceAsync(Guid userId)
         {
-            if (!await IsEnergySystemEnabledAsync()) return 999; // Unlimited if disabled
-
             try
             {
                 var response = await _supabase.SelectAsync<JObject>("users", "energy_balance", $"user_id=eq.{userId}");
@@ -46,48 +37,125 @@ namespace DualMind.API.Core.Services
                         return balanceToken.Value<int>();
                     }
                 }
-                return DAILY_ENERGY_REFILL; // Default fallback
+                // Initialize balance if not found
+                return DAILY_ENERGY_REFILL;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get energy balance for {UserId}", userId);
-                return 0; // Better safe than sorry on error
+                return 0;
             }
         }
 
         public async Task<bool> ConsumeBattleEnergyAsync(Guid userId)
         {
-            if (!await IsEnergySystemEnabledAsync()) return true; // Always succeed if disabled
+            return await ConsumeWagerEnergyAsync(userId, ENERGY_PER_BATTLE);
+        }
 
+        public async Task<bool> ConsumeWagerEnergyAsync(Guid userId, int amount)
+        {
             try
             {
-                // Call the RPC function we created in SQL
-                // This ensures atomic decrements and prevents race conditions
-                var payload = new { user_id_param = userId, amount = ENERGY_PER_BATTLE };
-                var response = await _supabase.RpcAsync<bool>("consume_energy", payload);
-
-                if (!response)
+                try
                 {
-                    _logger.LogWarning("User {UserId} attempted to battle without enough energy.", userId);
-                }
+                    var payload = new { user_id_param = userId, amount = amount };
+                    var response = await _supabase.RpcAsync<bool>("consume_energy", payload);
 
-                return response;
+                    if (!response)
+                    {
+                        _logger.LogWarning("User {UserId} attempted to consume {Amount} energy without enough balance.", userId, amount);
+                    }
+                    return response;
+                }
+                catch (Exception rpcEx)
+                {
+                    _logger.LogWarning(rpcEx, "RPC 'consume_energy' failed. Falling back to OCC read-modify-write.");
+
+                    int maxRetries = 3;
+                    for (int i = 0; i < maxRetries; i++)
+                    {
+                        var response = await _supabase.SelectAsync<JObject>("users", "energy_balance", $"user_id=eq.{userId}");
+                        if (response == null || response.Count == 0) break;
+
+                        var balanceToken = response[0]["energy_balance"];
+                        var currentBalance = (balanceToken != null && balanceToken.Type != JTokenType.Null) ? balanceToken.Value<int>() : 0;
+
+                        if (currentBalance >= amount)
+                        {
+                            var newBalance = currentBalance - amount;
+                            // Optimistic Concurrency Control
+                            var updated = await _supabase.UpdateAsync<object>("users", new { energy_balance = newBalance }, $"user_id=eq.{userId}&energy_balance=eq.{currentBalance}");
+                            
+                            if (updated != null && updated.Count > 0)
+                            {
+                                return true;
+                            }
+
+                            // OCC failed, delay before retrying
+                            await Task.Delay(150 * (i + 1));
+                            continue;
+                        }
+                        return false; // Not enough balance
+                    }
+                    return false; // Max retries hit
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to consume battle energy for {UserId}", userId);
-                // Fail open or closed? Let's fail OPEN to avoid breaking prod if RPC fails
-                return true;
+                _logger.LogError(ex, "Failed to consume {Amount} energy for {UserId}", amount, userId);
+                return false;
+            }
+        }
+
+        public async Task<int> AddEnergyAsync(Guid userId, int amount)
+        {
+            try
+            {
+                try
+                {
+                    var payload = new { user_id_param = userId, amount = amount };
+                    var newBalanceRpc = await _supabase.RpcAsync<int>("add_energy", payload);
+                    return newBalanceRpc;
+                }
+                catch (Exception)
+                {
+                    _logger.LogWarning("RPC 'add_energy' failed or not found. Falling back to OCC read-modify-write.");
+                }
+
+                int maxRetries = 3;
+                for (int i = 0; i < maxRetries; i++)
+                {
+                    var response = await _supabase.SelectAsync<JObject>("users", "energy_balance", $"user_id=eq.{userId}");
+                    if (response == null || response.Count == 0) break;
+
+                    var balanceToken = response[0]["energy_balance"];
+                    var currentBalance = (balanceToken != null && balanceToken.Type != JTokenType.Null) ? balanceToken.Value<int>() : 0;
+
+                    var newBalance = currentBalance + amount;
+                    // OCC 
+                    var updated = await _supabase.UpdateAsync<object>("users", new { energy_balance = newBalance }, $"user_id=eq.{userId}&energy_balance=eq.{currentBalance}");
+
+                    if (updated != null && updated.Count > 0)
+                    {
+                        return newBalance;
+                    }
+
+                    // OCC failed, delay before retrying
+                    await Task.Delay(150 * (i + 1));
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to add {Amount} energy for {UserId}", amount, userId);
+                return 0;
             }
         }
 
         public async Task<bool> RefillDailyEnergyAsync(Guid userId)
         {
-            if (!await IsEnergySystemEnabledAsync()) return true;
-
             try
             {
-                // Fetch current user state
                 var userResponse = await _supabase.SelectAsync<JObject>(
                     "users",
                     "energy_balance, last_energy_refill_date",
@@ -99,7 +167,6 @@ namespace DualMind.API.Core.Services
                 var balanceToken = user["energy_balance"];
                 var currentBalance = (balanceToken != null && balanceToken.Type != JTokenType.Null) ? balanceToken.Value<int>() : 0;
 
-                // Parse date safely
                 DateTime lastRefill;
                 var refillDateToken = user["last_energy_refill_date"];
                 if (refillDateToken != null && refillDateToken.Type != JTokenType.Null)
@@ -111,24 +178,24 @@ namespace DualMind.API.Core.Services
                     lastRefill = DateTime.MinValue;
                 }
 
-                // If they logged in on a new UTC day
                 if (lastRefill.Date < DateTime.UtcNow.Date)
                 {
-                    // If they have less than 20, reset them to 20 + 2 (Login Bonus) = 22
-                    // If they hoarded more than 20, just give them the +2 Login Bonus
                     var newBalance = Math.Max(DAILY_ENERGY_REFILL, currentBalance) + LOGIN_BONUS;
 
-                    await _supabase.UpdateAsync<object>("users", new
+                    var updated = await _supabase.UpdateAsync<object>("users", new
                     {
                         energy_balance = newBalance,
                         last_energy_refill_date = DateTime.UtcNow.ToString("yyyy-MM-dd")
-                    }, $"user_id=eq.{userId}");
+                    }, $"user_id=eq.{userId}&energy_balance=eq.{currentBalance}");
 
-                    _logger.LogInformation("Refilled daily energy for user {UserId}. New balance: {NewBalance}", userId, newBalance);
-                    return true;
+                    if (updated != null && updated.Count > 0)
+                    {
+                        _logger.LogInformation("Refilled daily energy for user {UserId}. New balance: {NewBalance}", userId, newBalance);
+                        return true;
+                    }
                 }
 
-                return false; // No refill needed today
+                return false;
             }
             catch (Exception ex)
             {
@@ -139,11 +206,8 @@ namespace DualMind.API.Core.Services
 
         public async Task<bool> ClaimVideoEnergyAsync(Guid userId)
         {
-            if (!await IsEnergySystemEnabledAsync()) return false;
-
             try
             {
-                // Check if they've already claimed it
                 var userResponse = await _supabase.SelectAsync<JObject>("users", "energy_balance, has_claimed_demo_video", $"user_id=eq.{userId}");
                 if (userResponse == null || userResponse.Count == 0) return false;
 
@@ -159,15 +223,19 @@ namespace DualMind.API.Core.Services
                     return false;
                 }
 
-                // Give them the bonus and set flag to true
-                await _supabase.UpdateAsync<object>("users", new
+                var updated = await _supabase.UpdateAsync<object>("users", new
                 {
                     energy_balance = currentBalance + DEMO_VIDEO_BONUS,
                     has_claimed_demo_video = true
-                }, $"user_id=eq.{userId}");
+                }, $"user_id=eq.{userId}&energy_balance=eq.{currentBalance}");
 
-                _logger.LogInformation("User {UserId} claimed demo video energy.", userId);
-                return true;
+                if (updated != null && updated.Count > 0)
+                {
+                    _logger.LogInformation("User {UserId} claimed demo video energy. New Balance: {NewBalance}", userId, currentBalance + DEMO_VIDEO_BONUS);
+                    return true;
+                }
+                
+                return false;
             }
             catch (Exception ex)
             {

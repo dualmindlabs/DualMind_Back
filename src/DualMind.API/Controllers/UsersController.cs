@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using DualMind.API.Core.Services;
+using DualMind.API.Infrastructure.Data;
 
 namespace DualMind.API.Controllers
 {
@@ -11,10 +12,12 @@ namespace DualMind.API.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUserSyncService _userSyncService;
+        private readonly ISupabaseService _supabase;
 
-        public UsersController(IUserSyncService userSyncService)
+        public UsersController(IUserSyncService userSyncService, ISupabaseService supabase)
         {
             _userSyncService = userSyncService;
+            _supabase = supabase;
         }
 
         [HttpPost("sync")]
@@ -39,6 +42,30 @@ namespace DualMind.API.Controllers
             {
                 // Log error but don't expose details
                 return StatusCode(500, new { error = "Failed to sync user" });
+            }
+        }
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetMe()
+        {
+            try
+            {
+                var sub = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(sub, out var userId))
+                {
+                    return Unauthorized(new { error = "Invalid token or user ID" });
+                }
+
+                var response = await _supabase.SelectAsync<Newtonsoft.Json.Linq.JObject>("users", "user_id, email, full_name, role, energy_balance", $"user_id=eq.{userId}");
+                if (response != null && response.Count > 0)
+                {
+                    return Ok(response[0]);
+                }
+                return NotFound(new { error = "User not found" });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new { error = "Failed to fetch user profile" });
             }
         }
     }

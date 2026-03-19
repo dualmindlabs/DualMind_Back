@@ -87,17 +87,17 @@ namespace DualMind.API.Core.Services
                 {
                     var dto = new ThreadMessageDto
                     {
-                        MessageId = Guid.Parse(m["message_id"].ToString()),
-                        ThreadId = Guid.Parse(m["thread_id"].ToString()),
+                        MessageId = Guid.TryParse(m["message_id"]?.ToString(), out var mid) ? mid : Guid.Empty,
+                        ThreadId = Guid.TryParse(m["thread_id"]?.ToString(), out var tid) ? tid : Guid.Empty,
                         PromptText = m["prompt_text"]?.ToString(),
                         Model1Name = m["model1_name"]?.ToString(),
                         Model2Name = m["model2_name"]?.ToString(),
                         Model1Response = m["model1_response"]?.ToString(),
                         Model2Response = m["model2_response"]?.ToString(),
-                        Model1TimeMs = m["model1_time_ms"] != null && m["model1_time_ms"].Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model1_time_ms"]) : null,
-                        Model2TimeMs = m["model2_time_ms"] != null && m["model2_time_ms"].Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model2_time_ms"]) : null,
-                        Position = m["position"] != null && m["position"].Type != JTokenType.Null ? Convert.ToInt32(m["position"]) : 0,
-                        CreatedAt = DateTime.Parse(m["created_at"].ToString())
+                        Model1TimeMs = m["model1_time_ms"] != null && m["model1_time_ms"]?.Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model1_time_ms"]) : null,
+                        Model2TimeMs = m["model2_time_ms"] != null && m["model2_time_ms"]?.Type != JTokenType.Null ? (int?)Convert.ToInt32(m["model2_time_ms"]) : null,
+                        Position = m["position"] != null && m["position"]?.Type != JTokenType.Null ? Convert.ToInt32(m["position"]) : 0,
+                        CreatedAt = DateTime.TryParse(m["created_at"]?.ToString(), out var dt) ? dt : DateTime.UtcNow
                     };
 
                     if (m["comparison_id"] != null && m["comparison_id"].Type != JTokenType.Null)

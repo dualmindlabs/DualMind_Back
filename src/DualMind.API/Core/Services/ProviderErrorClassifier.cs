@@ -18,7 +18,7 @@ namespace DualMind.API.Core.Services
 
     public class ProviderErrorClassifier
     {
-        public ProviderErrorType Classify(Exception ex, HttpResponseMessage response = null)
+        public ProviderErrorType Classify(Exception ex, HttpResponseMessage? response = null)
         {
             if (response != null)
             {

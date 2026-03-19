@@ -32,19 +32,19 @@ namespace DualMind.API.Core.Services
                     ModelName = r["model_name"]?.ToString(),
                     DisplayName = r["display_name"]?.ToString(),
                     ProviderName = r["provider_name"]?.ToString(),
-                    EloScore = r["elo_score"] != null && r["elo_score"].Type != JTokenType.Null
+                    EloScore = r["elo_score"] != null && r["elo_score"]?.Type != JTokenType.Null
                         ? Convert.ToDouble(r["elo_score"]) : 1000.0,
-                    TotalWins = r["total_wins"] != null && r["total_wins"].Type != JTokenType.Null
+                    TotalWins = r["total_wins"] != null && r["total_wins"]?.Type != JTokenType.Null
                         ? Convert.ToInt32(r["total_wins"]) : 0,
-                    TotalLosses = r["total_losses"] != null && r["total_losses"].Type != JTokenType.Null
+                    TotalLosses = r["total_losses"] != null && r["total_losses"]?.Type != JTokenType.Null
                         ? Convert.ToInt32(r["total_losses"]) : 0,
-                    TotalTies = r["total_ties"] != null && r["total_ties"].Type != JTokenType.Null
+                    TotalTies = r["total_ties"] != null && r["total_ties"]?.Type != JTokenType.Null
                         ? Convert.ToInt32(r["total_ties"]) : 0,
-                    TotalResponses = r["total_comparisons"] != null && r["total_comparisons"].Type != JTokenType.Null
+                    TotalResponses = r["total_comparisons"] != null && r["total_comparisons"]?.Type != JTokenType.Null
                         ? Convert.ToInt32(r["total_comparisons"]) : 0,
-                    WinRate = r["win_rate"] != null && r["win_rate"].Type != JTokenType.Null
+                    WinRate = r["win_rate"] != null && r["win_rate"]?.Type != JTokenType.Null
                         ? Convert.ToDouble(r["win_rate"]) : 0.0,
-                    EloRank = r["elo_rank"] != null && r["elo_rank"].Type != JTokenType.Null
+                    EloRank = r["elo_rank"] != null && r["elo_rank"]?.Type != JTokenType.Null
                         ? Convert.ToInt32(r["elo_rank"]) : 0
                 }).ToList();
             }
@@ -95,9 +95,9 @@ namespace DualMind.API.Core.Services
         {
             try
             {
-                // Fetch comparison through masked view — enforces blind vote
+                // Fetch comparison directly from base table to resolve actual model IDs
                 var comps = await _supabase.SelectAsync<JObject>(
-                    "v_comparisons_masked",
+                    "comparisons",
                     "comparison_id,model1_id,model2_id",
                     $"comparison_id=eq.{comparisonId}"
                 );

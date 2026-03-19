@@ -11,6 +11,22 @@ namespace DualMind.API.Core.Models
         public int? VoteDurationMs { get; set; }
     }
 
+    public class WagerVoteRequest
+    {
+        public Guid ComparisonId { get; set; }
+        public string VoteChoice { get; set; } = string.Empty; // "left", "right"
+        public int WagerAmount { get; set; }
+    }
+
+    public class WagerVoteResponse
+    {
+        public bool Success { get; set; }
+        public bool WagerWon { get; set; }
+        public int EnergyChange { get; set; }
+        public int NewBalance { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
     public class ModelStatsDto
     {
         public Guid ModelId { get; set; }

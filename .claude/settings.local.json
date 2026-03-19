@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Skill(gsd:plan-phase)"
     ]
   }
 }

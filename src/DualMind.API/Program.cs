@@ -1,14 +1,15 @@
 using System;
+using DualMind.API.Bot;
 using DualMind.API.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 
-var builder = WebApplication.CreateBuilder(args);
+// Load .env before building configuration
+DualMind.API.Infrastructure.Configuration.EnvConfig.Load();
 
-// Load .env
-EnvConfig.Load();
+var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -98,7 +99,7 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
                 new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
                     System.Text.Encoding.UTF8.GetBytes(jwtSecret));
         }
-        else
+        else if (builder.Environment.IsDevelopment())
         {
             // WARN: Development only fallback!
             System.Console.WriteLine("⚠️ WARNING: JWT Secret missing. Bypassing Signature & Audience Validation for Local Dev.");
@@ -110,6 +111,11 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
                 var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(token);
                 return jwt;
             };
+        }
+        else
+        {
+            // In Production, if JWT_SECRET is missing, we MUST fail fast rather than allowing bypass
+            throw new InvalidOperationException("JWT_SECRET must be configured in production environments.");
         }
         
         // Event handlers for debugging
@@ -138,6 +144,9 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
     });
 
 builder.Services.AddAuthorization();
+
+// Add formal health checks
+builder.Services.AddHealthChecks();
 
 // Add HTTP Client for SupabaseService with configured headers
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.ISupabaseService, DualMind.API.Infrastructure.Data.SupabaseService>((serviceProvider, client) =>
@@ -179,6 +188,11 @@ builder.Services.AddScoped<DualMind.API.Core.Services.IMessageLogger, DualMind.A
 builder.Services.AddScoped<DualMind.API.Core.Services.IUserSyncService, DualMind.API.Core.Services.UserSyncService>();
 builder.Services.AddScoped<DualMind.API.Core.Services.ISystemSettingsService, DualMind.API.Core.Services.SystemSettingsService>();
 builder.Services.AddScoped<DualMind.API.Core.Services.IEnergyService, DualMind.API.Core.Services.EnergyService>();
+builder.Services.AddScoped<DualMind.API.Core.Services.IWagerService, DualMind.API.Core.Services.WagerService>();
+            var tOptions = builder.Configuration.GetSection("Telegram").Get<DualMind.API.Bot.TelegramBotOptions>();
+            Console.WriteLine($"[DEBUG] Bot Config: Enabled={(tOptions?.IsEnabled ?? false)}, TokenLen={(tOptions?.BotToken?.Length ?? 0)}, BaseUrl={tOptions?.ApiBaseUrl}");
+            
+            builder.Services.AddTelegramBot(builder.Configuration);
 
 // Register Admin Services
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.IAdminSupabaseClient, DualMind.API.Infrastructure.Data.AdminSupabaseClient>();
@@ -187,12 +201,29 @@ builder.Services.AddScoped<DualMind.API.Core.Services.IProviderConfigService, Du
 // Allow CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll",
-        builder =>
+    var allowedOrigins = (System.Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    options.AddPolicy("ProductionPolicy",
+        policy =>
         {
-            builder.AllowAnyOrigin()
-                   .AllowAnyMethod()
-                   .AllowAnyHeader();
+            if (allowedOrigins.Length > 0)
+            {
+                policy.WithOrigins(allowedOrigins)
+                       .AllowAnyMethod()
+                       .AllowAnyHeader();
+            }
+            else if (builder.Environment.IsDevelopment())
+            {
+                policy.AllowAnyOrigin()
+                       .AllowAnyMethod()
+                       .AllowAnyHeader();
+            }
+            else
+            {
+                // Fallback for production if no origins specified — very restrictive
+                policy.SetIsOriginAllowed(_ => false);
+            }
         });
 });
 
@@ -233,28 +264,32 @@ app.UseExceptionHandler(exceptionHandlerApp =>
     });
 });
 
-// Request logging middleware
+// Request logging middleware with correlation ID and logging scopes
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-    var correlationId = Guid.NewGuid().ToString("N")[..8];
+    var correlationId = context.Request.Headers["X-Correlation-Id"].FirstOrDefault() 
+                        ?? Guid.NewGuid().ToString("N")[..8];
+    
     context.Items["CorrelationId"] = correlationId;
     context.Response.Headers["X-Correlation-Id"] = correlationId;
 
     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
     
-    logger.LogInformation("[{CorrelationId}] {Method} {Path} started", 
-        correlationId, context.Request.Method, context.Request.Path);
+    using (logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
+    {
+        logger.LogInformation("{Method} {Path} started", context.Request.Method, context.Request.Path);
 
-    await next();
+        await next();
 
-    stopwatch.Stop();
-    logger.LogInformation("[{CorrelationId}] {Method} {Path} completed in {ElapsedMs}ms with {StatusCode}", 
-        correlationId, context.Request.Method, context.Request.Path, 
-        stopwatch.ElapsedMilliseconds, context.Response.StatusCode);
+        stopwatch.Stop();
+        logger.LogInformation("{Method} {Path} completed in {ElapsedMs}ms with {StatusCode}", 
+            context.Request.Method, context.Request.Path, 
+            stopwatch.ElapsedMilliseconds, context.Response.StatusCode);
+    }
 });
 
-app.UseCors("AllowAll");
+app.UseCors("ProductionPolicy");
 
 app.UseHttpsRedirection();
 
@@ -262,6 +297,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 // Warm up model cache on startup so provider routing works from first request
 _ = Task.Run(async () =>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using DualMind.API.AI.Gateway;
 using DualMind.API.Core.Services;
 using DualMind.API.AI.Contracts;
+using DualMind.API.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
 
 namespace DualMind.API.Controllers.Api
@@ -15,13 +16,15 @@ namespace DualMind.API.Controllers.Api
         private readonly IChatProviderFactory _providerFactory;
         private readonly IModelSelector _modelSelector;
         private readonly IEnergyService _energyService;
+        private readonly ISupabaseService _supabase;
         private readonly ILogger<BlindBattleController> _logger;
 
-        public BlindBattleController(IChatProviderFactory providerFactory, IModelSelector modelSelector, IEnergyService energyService, ILogger<BlindBattleController> logger)
+        public BlindBattleController(IChatProviderFactory providerFactory, IModelSelector modelSelector, IEnergyService energyService, ISupabaseService supabase, ILogger<BlindBattleController> logger)
         {
             _providerFactory = providerFactory;
             _modelSelector = modelSelector;
             _energyService = energyService;
+            _supabase = supabase;
             _logger = logger;
         }
 
@@ -31,20 +34,24 @@ namespace DualMind.API.Controllers.Api
         {
             try
             {
-                // Energy check for authenticated users
+                // Energy check for authenticated users (TESTERS ONLY)
                 var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (Guid.TryParse(sub, out var userId))
                 {
-                    var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId);
-                    if (!energyConsumed)
+                    var userRow = await _supabase.SelectAsync<Newtonsoft.Json.Linq.JObject>("users", "role", $"user_id=eq.{userId}");
+                    if (userRow != null && userRow.Count > 0 && userRow[0]["role"]?.ToString() == "tester")
                     {
-                        return StatusCode(402, new
+                        var energyConsumed = await _energyService.ConsumeBattleEnergyAsync(userId);
+                        if (!energyConsumed)
                         {
-                            @object = "ai.error",
-                            code = "INSUFFICIENT_ENERGY",
-                            message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
-                            timestamp = DateTime.UtcNow
-                        });
+                            return StatusCode(402, new
+                            {
+                                @object = "ai.error",
+                                code = "INSUFFICIENT_ENERGY",
+                                message = "You don't have enough energy. Come back tomorrow or watch a demo video.",
+                                timestamp = DateTime.UtcNow
+                            });
+                        }
                     }
                 }
 

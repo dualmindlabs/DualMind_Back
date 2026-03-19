@@ -111,7 +111,7 @@ namespace DualMind.API.AI.Providers
             }
         }
 
-        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null)
+        public async Task<GroqResponse> ChatAsync(string model, string prompt, string systemPrompt = null, int? maxTokens = null, double? temperature = null, System.Collections.Generic.List<ChatMessageHistory> history = null)
         {
             var targetUrl = GoogleApiUrl;
 
@@ -119,6 +119,18 @@ namespace DualMind.API.AI.Providers
             {
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(systemPrompt)) messages.Add(new { role = "system", content = systemPrompt });
+
+                if (history != null && history.Count > 0)
+                {
+                    foreach (var msg in history)
+                    {
+                        if (!string.IsNullOrEmpty(msg.Content) && !string.IsNullOrEmpty(msg.Role))
+                        {
+                            messages.Add(new { role = msg.Role, content = msg.Content });
+                        }
+                    }
+                }
+
                 messages.Add(new { role = "user", content = prompt });
 
                 var requestBody = new
@@ -173,6 +185,18 @@ namespace DualMind.API.AI.Providers
                 var model = request.Model == "auto" || string.IsNullOrEmpty(request.Model) ? "gemini-2.5-flash" : request.Model;
                 var messages = new System.Collections.Generic.List<object>();
                 if (!string.IsNullOrEmpty(request.System)) messages.Add(new { role = "system", content = request.System });
+
+                if (request.History != null && request.History.Count > 0)
+                {
+                    foreach (var msg in request.History)
+                    {
+                        if (!string.IsNullOrEmpty(msg.Content) && !string.IsNullOrEmpty(msg.Role))
+                        {
+                            messages.Add(new { role = msg.Role, content = msg.Content });
+                        }
+                    }
+                }
+
                 messages.Add(new { role = "user", content = request.Prompt });
 
                 var requestBody = new

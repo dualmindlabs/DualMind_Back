@@ -1,0 +1,7 @@
+﻿C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\Bot\Transport\TelegramBotTransport.cs(50,41): error CS1061: 'ITelegramBotClient' does not contain a definition for 'SendMessageAsync' and no accessible extension method 'SendMessageAsync' accepting a first argument of type 'ITelegramBotClient' could be found (are you missing a using directive or an assembly reference?) [C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\DualMind.API.csproj]
+
+Build FAILED.
+    146 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:02.93

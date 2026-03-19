@@ -1,0 +1,10 @@
+﻿C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\tmp_checker\Program.cs(5,19): error CS1056: Unexpected character '\' [C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\DualMind.API.csproj]
+C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\tmp_checker\Program.cs(5,20): error CS1010: Newline in constant [C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\DualMind.API.csproj]
+C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\tmp_checker\Program.cs(5,33): error CS1026: ) expected [C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\DualMind.API.csproj]
+C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\tmp_checker\Program.cs(5,33): error CS1002: ; expected [C:\Users\Harshu\source\repos\DualMind_Back\src\DualMind.API\DualMind.API.csproj]
+
+Build FAILED.
+    0 Warning(s)
+    4 Error(s)
+
+Time Elapsed 00:00:01.92

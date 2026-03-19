@@ -36,7 +36,7 @@ namespace DualMind.API.Infrastructure.Data
 
         private string RestUrl => $"{_baseUrl}/rest/v1";
 
-        public async Task<List<T>> SelectAsync<T>(string table, string select = "*", string filter = null)
+        public async Task<List<T>> SelectAsync<T>(string table, string select = "*", string? filter = null)
         {
             if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
                 throw new ArgumentException("Invalid table name", nameof(table));
@@ -48,16 +48,16 @@ namespace DualMind.API.Infrastructure.Data
                 url += $"&{filter}";
             }
 
-            var response = await _client.GetAsync(url);
+            using var response = await _client.GetAsync(url);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
                 throw new Exception($"Supabase error: {content}");
 
-            return JsonConvert.DeserializeObject<List<T>>(content);
+            return JsonConvert.DeserializeObject<List<T>>(content) ?? new List<T>();
         }
 
-        public async Task<T> SelectSingleAsync<T>(string table, string select = "*", string filter = null)
+        public async Task<T?> SelectSingleAsync<T>(string table, string select = "*", string? filter = null)
         {
             if (string.IsNullOrWhiteSpace(table) || table.Contains(" ") || table.Contains(";"))
                 throw new ArgumentException("Invalid table name", nameof(table));
@@ -67,10 +67,10 @@ namespace DualMind.API.Infrastructure.Data
             if (!string.IsNullOrEmpty(filter))
                 url += $"&{filter}";
 
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Accept", "application/vnd.pgrst.object+json");
 
-            var response = await _client.SendAsync(request);
+            using var response = await _client.SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -83,7 +83,7 @@ namespace DualMind.API.Infrastructure.Data
             return JsonConvert.DeserializeObject<T>(content);
         }
 
-        public async Task<T> InsertAsync<T>(string table, object data)
+        public async Task<T?> InsertAsync<T>(string table, object data)
         {
             var url = $"{RestUrl}/{table}";
             var json = JsonConvert.SerializeObject(data, new JsonSerializerSettings
@@ -91,13 +91,13 @@ namespace DualMind.API.Infrastructure.Data
                 NullValueHandling = NullValueHandling.Ignore
             });
 
-            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Prefer", "return=representation");
 
-            var response = await _client.SendAsync(request);
+            using var response = await _client.SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -107,7 +107,7 @@ namespace DualMind.API.Infrastructure.Data
             return arr != null && arr.Count > 0 ? arr[0] : default;
         }
 
-        public async Task<T> UpsertAsync<T>(string table, object data)
+        public async Task<T?> UpsertAsync<T>(string table, object data)
         {
             var url = $"{RestUrl}/{table}";
             var json = JsonConvert.SerializeObject(data, new JsonSerializerSettings
@@ -115,13 +115,13 @@ namespace DualMind.API.Infrastructure.Data
                 NullValueHandling = NullValueHandling.Ignore
             });
 
-            var request = new HttpRequestMessage(HttpMethod.Post, url)
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Prefer", "return=representation,resolution=merge-duplicates");
 
-            var response = await _client.SendAsync(request);
+            using var response = await _client.SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -145,19 +145,19 @@ namespace DualMind.API.Infrastructure.Data
                 NullValueHandling = NullValueHandling.Ignore
             });
 
-            var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Prefer", "return=representation");
 
-            var response = await _client.SendAsync(request);
+            using var response = await _client.SendAsync(request);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
                 throw new Exception($"Supabase update error: {content}");
 
-            return JsonConvert.DeserializeObject<List<T>>(content);
+            return JsonConvert.DeserializeObject<List<T>>(content) ?? new List<T>();
         }
 
         public async Task DeleteAsync(string table, string filter)
@@ -169,7 +169,7 @@ namespace DualMind.API.Infrastructure.Data
                 throw new ArgumentException("Filter is required for delete operations", nameof(filter));
 
             var url = $"{RestUrl}/{table}?{filter}";
-            var response = await _client.DeleteAsync(url);
+            using var response = await _client.DeleteAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -178,14 +178,14 @@ namespace DualMind.API.Infrastructure.Data
             }
         }
 
-        public async Task<JObject> RpcAsync(string functionName, object parameters = null)
+        public async Task<JObject> RpcAsync(string functionName, object? parameters = null)
         {
             var url = $"{RestUrl}/rpc/{functionName}";
             var json = parameters != null
                 ? JsonConvert.SerializeObject(parameters)
                 : "{}";
 
-            var response = await _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+            using var response = await _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
@@ -208,14 +208,14 @@ namespace DualMind.API.Infrastructure.Data
             }
         }
 
-        public async Task<T> RpcAsync<T>(string functionName, object parameters = null)
+        public async Task<T?> RpcAsync<T>(string functionName, object? parameters = null)
         {
             var url = $"{RestUrl}/rpc/{functionName}";
             var json = parameters != null
                 ? JsonConvert.SerializeObject(parameters)
                 : "{}";
 
-            var response = await _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+            using var response = await _client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
