@@ -26,10 +26,41 @@ public class BattleCommandHandlerTests
         await handler.HandlePromptAsync(1, "test prompt", CancellationToken.None);
 
         var message = Assert.Single(transport.SentMessages);
-        Assert.Contains("Sign in first", message.Message.Text);
+        Assert.Contains("sign-in first", message.Message.Text, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(message.ReplyMarkup);
         Assert.Empty(transport.EditedMessages);
         Assert.Null(cache.GetActiveBattle(1));
+    }
+
+    [Fact]
+    public async Task HandlePromptAsync_TracksPendingBattleUntilResponsesArrive()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-03-15T10:00:00Z"));
+        var transport = new FakeTelegramBotTransport();
+        var cache = new TelegramStateCache(new InMemorySessionStore(), timeProvider);
+        var authService = CreateSignedInAuthService();
+        var battleCompletion = new TaskCompletionSource<DualChatApiResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var apiClient = new FakeDualMindBotApiClient
+        {
+            StartBattleHandler = (_, _, _) => battleCompletion.Task
+        };
+
+        var handler = CreateHandler(authService, apiClient, transport, cache, timeProvider);
+
+        await handler.HandlePromptAsync(1, "test prompt", CancellationToken.None);
+
+        var statusMessage = Assert.Single(transport.SentMessages);
+        Assert.Contains("Battle queued", statusMessage.Message.Text);
+        Assert.Contains("test prompt", statusMessage.Message.Text, StringComparison.Ordinal);
+        Assert.NotNull(cache.GetPendingBattle(1));
+        Assert.Null(cache.GetActiveBattle(1));
+
+        battleCompletion.SetResult(CreateBattleResponse());
+        await WaitForConditionAsync(() => transport.SentMessages.Count == 3 && cache.GetActiveBattle(1) != null);
+
+        Assert.Null(cache.GetPendingBattle(1));
+        Assert.NotNull(cache.GetActiveBattle(1));
+        Assert.Contains(transport.EditedMessages, edit => edit.Text.Contains("Battle ready", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -58,8 +89,11 @@ public class BattleCommandHandlerTests
 
         await handler.HandlePromptAsync(1, "slow prompt", CancellationToken.None);
 
-        Assert.Contains(transport.EditedMessages, message => message.Text.Contains("Taking longer than usual", StringComparison.Ordinal));
-        Assert.Equal(3, transport.SentMessages.Count);
+        await WaitForConditionAsync(() =>
+            transport.EditedMessages.Any(message => message.Text.Contains("Still cooking", StringComparison.Ordinal)) &&
+            transport.SentMessages.Count == 3 &&
+            cache.GetActiveBattle(1) != null);
+
         Assert.NotNull(cache.GetActiveBattle(1));
     }
 
@@ -76,7 +110,62 @@ public class BattleCommandHandlerTests
         await handler.HandlePromptAsync(1, "another prompt", CancellationToken.None);
 
         var message = Assert.Single(transport.SentMessages);
-        Assert.Contains("Finish voting on the current battle", message.Message.Text);
+        Assert.Contains("waiting for your vote", message.Message.Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task HandleCommandAsync_RejectsNewBattleWhenOneIsAlreadyPending()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-03-15T10:00:00Z"));
+        var transport = new FakeTelegramBotTransport();
+        var cache = new TelegramStateCache(new InMemorySessionStore(), timeProvider);
+        var authService = CreateSignedInAuthService();
+        var battleCompletion = new TaskCompletionSource<DualChatApiResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var apiClient = new FakeDualMindBotApiClient
+        {
+            StartBattleHandler = (_, _, _) => battleCompletion.Task
+        };
+
+        var handler = CreateHandler(authService, apiClient, transport, cache, timeProvider);
+
+        await handler.HandlePromptAsync(1, "test prompt", CancellationToken.None);
+        await handler.HandleCommandAsync(1, CancellationToken.None);
+
+        Assert.Equal(2, transport.SentMessages.Count);
+        Assert.Contains("already running", transport.SentMessages.Last().Message.Text, StringComparison.OrdinalIgnoreCase);
+
+        battleCompletion.SetResult(CreateBattleResponse());
+        await WaitForConditionAsync(() => cache.GetActiveBattle(1) != null);
+    }
+
+    [Fact]
+    public async Task HandlePromptAsync_SendsTypingHeartbeatWhileBattleIsPending()
+    {
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-03-15T10:00:00Z"));
+        var transport = new FakeTelegramBotTransport();
+        var cache = new TelegramStateCache(new InMemorySessionStore(), timeProvider);
+        var authService = CreateSignedInAuthService();
+        var battleCompletion = new TaskCompletionSource<DualChatApiResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var apiClient = new FakeDualMindBotApiClient
+        {
+            StartBattleHandler = (_, _, _) => battleCompletion.Task
+        };
+
+        var handler = CreateHandler(
+            authService,
+            apiClient,
+            transport,
+            cache,
+            timeProvider,
+            new TelegramBotOptions { BattleHeartbeatSeconds = 1, BattleCooldownSeconds = 15 });
+
+        await handler.HandlePromptAsync(1, "heartbeat prompt", CancellationToken.None);
+        await WaitForConditionAsync(() => transport.TypingChatIds.Count > 0);
+
+        Assert.Contains(1L, transport.TypingChatIds);
+
+        battleCompletion.SetResult(CreateBattleResponse());
+        await WaitForConditionAsync(() => cache.GetActiveBattle(1) != null);
     }
 
     [Fact]
@@ -109,6 +198,7 @@ public class BattleCommandHandlerTests
         var handler = CreateHandler(authService, apiClient, transport, cache, timeProvider);
 
         await handler.HandlePromptAsync(1, "truncate prompt", CancellationToken.None);
+        await WaitForConditionAsync(() => transport.SentMessages.Count == 3);
 
         var agentAMessage = transport.SentMessages[1].Message.Text!;
         var agentBMessage = transport.SentMessages[2].Message.Text!;
@@ -135,9 +225,11 @@ public class BattleCommandHandlerTests
         var handler = CreateHandler(authService, apiClient, transport, cache, timeProvider);
 
         await handler.HandlePromptAsync(1, "timeout prompt", CancellationToken.None);
+        await WaitForConditionAsync(() => transport.EditedMessages.Count == 1);
 
         var edit = Assert.Single(transport.EditedMessages);
         Assert.Contains("timed out", edit.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(cache.GetPendingBattle(1));
         Assert.Null(cache.GetActiveBattle(1));
     }
 
@@ -174,8 +266,10 @@ public class BattleCommandHandlerTests
         await handler.HandleVoteAsync(1, "cb-1", comparisonId, voteChoice, CancellationToken.None);
 
         Assert.Equal(voteChoice, capturedVote);
-        Assert.Equal(2, transport.EditedMessages.Count);
-        Assert.All(transport.EditedMessages, edit => Assert.Contains("Model ", edit.Text));
+        Assert.Equal(3, transport.EditedMessages.Count);
+        Assert.Contains(transport.EditedMessages, edit => edit.Text.Contains("Agent A: Model ", StringComparison.Ordinal));
+        Assert.Contains(transport.EditedMessages, edit => edit.Text.Contains("Agent B: Model ", StringComparison.Ordinal));
+        Assert.Contains(transport.EditedMessages, edit => edit.Text.Contains("Vote locked", StringComparison.Ordinal));
         Assert.Null(cache.GetActiveBattle(1));
     }
 
@@ -193,7 +287,7 @@ public class BattleCommandHandlerTests
         await handler.HandleVoteAsync(1, "cb-1", comparisonId, "left", CancellationToken.None);
         await handler.HandleVoteAsync(1, "cb-2", comparisonId, "right", CancellationToken.None);
 
-        Assert.Contains(transport.CallbackAnswers, answer => answer.CallbackQueryId == "cb-2" && answer.Text == "That vote is no longer available.");
+        Assert.Contains(transport.CallbackAnswers, answer => answer.CallbackQueryId == "cb-2" && answer.Text == "That vote is no longer live.");
     }
 
     [Fact]
@@ -241,9 +335,26 @@ public class BattleCommandHandlerTests
         var handler = CreateHandler(authService, apiClient, transport, cache, timeProvider);
 
         await handler.HandlePromptAsync(1, "retry prompt", CancellationToken.None);
+        await WaitForConditionAsync(() => attempt == 2 && cache.GetActiveBattle(1) != null);
 
         Assert.Equal(2, attempt);
         Assert.NotNull(cache.GetActiveBattle(1));
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> condition, int timeoutMs = 3000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.True(condition(), "Timed out waiting for the expected background bot state.");
     }
 
     private static BattleCommandHandler CreateHandler(

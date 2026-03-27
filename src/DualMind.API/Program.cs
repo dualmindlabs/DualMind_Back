@@ -138,7 +138,11 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authentication.IClaimsTransformation, DualMind.API.Infrastructure.Auth.RoleClaimsTransformation>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("admin"));
+});
 
 // Add HTTP Client for SupabaseService with configured headers
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.ISupabaseService, DualMind.API.Infrastructure.Data.SupabaseService>((serviceProvider, client) =>

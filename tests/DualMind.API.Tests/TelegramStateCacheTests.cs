@@ -36,6 +36,28 @@ public class TelegramStateCacheTests
     }
 
     [Fact]
+    public void PendingBattle_CanBeCanceledOrCompleted()
+    {
+        var cache = new TelegramStateCache(new FakeSessionStore(), new FakeTimeProvider(DateTimeOffset.UtcNow));
+        var pendingBattle = cache.BeginPendingBattle(9, "prompt", 77, CancellationToken.None);
+
+        Assert.Equal(pendingBattle, cache.GetPendingBattle(9));
+
+        var canceled = cache.CancelPendingBattle(9);
+        Assert.Equal(pendingBattle.OperationId, canceled!.OperationId);
+        Assert.True(canceled.CancellationToken.IsCancellationRequested);
+        Assert.Null(cache.GetPendingBattle(9));
+
+        var replacement = cache.BeginPendingBattle(9, "prompt", 78, CancellationToken.None);
+        Assert.True(cache.TryCompletePendingBattle(9, replacement.OperationId, out var completed));
+        Assert.Equal(replacement.OperationId, completed!.OperationId);
+        Assert.Null(cache.GetPendingBattle(9));
+
+        canceled.Dispose();
+        replacement.Dispose();
+    }
+
+    [Fact]
     public void ActiveBattle_PreventsDuplicateVotes_UntilReset()
     {
         var cache = new TelegramStateCache(new FakeSessionStore(), new FakeTimeProvider(DateTimeOffset.UtcNow));
@@ -51,6 +73,19 @@ public class TelegramStateCacheTests
         Assert.Equal("both-bad", retriedSession!.VoteChoice);
 
         cache.CompleteBattle(7);
+        Assert.Null(cache.GetActiveBattle(7));
+    }
+
+    [Fact]
+    public void ActiveBattle_CanBeClearedWithoutVote()
+    {
+        var cache = new TelegramStateCache(new FakeSessionStore(), new FakeTimeProvider(DateTimeOffset.UtcNow));
+        var battle = TestBattleFactory.CreateBattleSession();
+        cache.SetActiveBattle(7, battle);
+
+        var cleared = cache.ClearActiveBattle(7);
+
+        Assert.Equal(battle.ComparisonId, cleared!.ComparisonId);
         Assert.Null(cache.GetActiveBattle(7));
     }
 

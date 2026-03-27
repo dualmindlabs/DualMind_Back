@@ -13,6 +13,7 @@ namespace DualMind.API.Bot.Models
         public string AgentBResponse { get; set; } = string.Empty;
         public string AgentAModelDisplayName { get; set; } = string.Empty;
         public string AgentBModelDisplayName { get; set; } = string.Empty;
+        public int StatusMessageId { get; set; }
         public int AgentAMessageId { get; set; }
         public int AgentBMessageId { get; set; }
         public DateTimeOffset StartedAt { get; set; }

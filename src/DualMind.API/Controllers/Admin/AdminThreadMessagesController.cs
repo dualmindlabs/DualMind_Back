@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 using Newtonsoft.Json;
@@ -11,6 +9,7 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/messages")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
     public class AdminThreadMessagesController : ControllerBase
     {
         private readonly IAdminSupabaseClient _supabase;
@@ -22,42 +21,72 @@ namespace DualMind.API.Controllers.Admin
             _supabase = supabase;
         }
 
-        // GET api/admin/messages - Get all messages
-        [HttpGet]
-        [Route("")]
-        public async Task<IActionResult> GetAll(int page = 1, int limit = 50)
+        /// <summary>
+        /// GET api/admin/messages?page=&pageSize=&threadId=&search=
+        /// </summary>
+        [HttpGet("")]
+        public async Task<IActionResult> GetAll(int page = 1, int pageSize = 50, Guid? threadId = null, string search = null)
         {
             try
             {
                 if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
+                if (pageSize < 1) pageSize = 1;
+                if (pageSize > 500) pageSize = 500;
 
-                int offset = (page - 1) * limit;
-                var query = $"order=created_at.desc&limit={limit}&offset={offset}";
+                int offset = (page - 1) * pageSize;
+                var filters = new List<string>();
+
+                if (threadId.HasValue)
+                    filters.Add($"thread_id=eq.{threadId.Value}");
+                if (!string.IsNullOrEmpty(search))
+                    filters.Add($"prompt_text=ilike.*{Uri.EscapeDataString(search)}*");
+
+                var filterQuery = string.Join("&", filters);
+                var query = (string.IsNullOrEmpty(filterQuery) ? "" : filterQuery + "&") + $"order=created_at.desc&limit={pageSize}&offset={offset}";
+
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(result);
 
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN);
+                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
 
-                return Ok(new {
-                    success = true,
-                    data = messages,
-                    count = messages?.Count ?? 0,
-                    total = total,
-                    page = page,
-                    limit = limit
-                });
+                return Ok(new ApiResponse<List<ThreadMessage>> { Success = true, Data = messages, Total = total, Page = page, PageSize = pageSize });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<List<ThreadMessage>> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/messages/{id} - Get message by ID
-        [HttpGet]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// POST api/admin/messages
+        /// </summary>
+        [HttpPost("")]
+        public async Task<IActionResult> Create([FromBody] ThreadMessageCreateRequest request)
+        {
+            try
+            {
+                if (request?.ThreadId == Guid.Empty || string.IsNullOrEmpty(request?.PromptText))
+                    return BadRequest(new ApiResponse<ThreadMessage> { Success = false, Error = "Thread ID and prompt text are required" });
+
+                var response = await _supabase.CreateAsync(TABLE, request);
+                var content = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                    return BadRequest(new ApiResponse<ThreadMessage> { Success = false, Error = content });
+
+                var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(content);
+                return Ok(new ApiResponse<ThreadMessage> { Success = true, Data = messages?[0] });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<ThreadMessage> { Success = false, Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// GET api/admin/messages/{id}
+        /// </summary>
+        [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id)
         {
             try
@@ -66,71 +95,20 @@ namespace DualMind.API.Controllers.Admin
                 var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(result);
 
                 if (messages == null || messages.Count == 0)
-                    return NotFound();
+                    return NotFound(new ApiResponse<ThreadMessage> { Success = false, Error = "Message not found" });
 
-                return Ok(new { success = true, data = messages[0] });
+                return Ok(new ApiResponse<ThreadMessage> { Success = true, Data = messages[0] });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<ThreadMessage> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/messages/thread/{threadId} - Get messages by thread
-        [HttpGet]
-        [Route("thread/{threadId:guid}")]
-        public async Task<IActionResult> GetByThread(Guid threadId, int page = 1, int limit = 200)
-        {
-            try
-            {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                int offset = (page - 1) * limit;
-                var filterQuery = $"thread_id=eq.{threadId}";
-                var query = $"{filterQuery}&order=created_at.asc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-
-                return Ok(new { success = true, data = messages, count = messages?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // POST api/admin/messages - Create new message
-        [HttpPost]
-        [Route("")]
-        public async Task<IActionResult> Create([FromBody] ThreadMessageCreateRequest request)
-        {
-            try
-            {
-                if (request?.ThreadId == Guid.Empty || string.IsNullOrEmpty(request?.PromptText))
-                    return BadRequest("Thread ID and prompt text are required");
-
-                var response = await _supabase.CreateAsync(TABLE, request);
-                var content = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                    return BadRequest( new { success = false, error = content });
-
-                var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(content);
-                return Ok(new { success = true, data = messages?[0], message = "Message created successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // DELETE api/admin/messages/{id} - Delete message
-        [HttpDelete]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// DELETE api/admin/messages/{id}
+        /// </summary>
+        [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             try
@@ -140,69 +118,14 @@ namespace DualMind.API.Controllers.Admin
                 if (!response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    return BadRequest( new { success = false, error = content });
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
                 }
 
-                return Ok(new { success = true, message = "Message deleted successfully" });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Message deleted successfully" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // DELETE api/admin/messages/thread/{threadId} - Delete all messages in a thread
-        [HttpDelete]
-        [Route("thread/{threadId:guid}")]
-        public async Task<IActionResult> DeleteByThread(Guid threadId)
-        {
-            try
-            {
-                var response = await _supabase.DeleteAsync(TABLE, "thread_id", threadId.ToString());
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var content = await response.Content.ReadAsStringAsync();
-                    return BadRequest( new { success = false, error = content });
-                }
-
-                return Ok(new { success = true, message = "All messages in thread deleted successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // GET api/admin/messages/search - Search messages by prompt
-        [HttpGet]
-        [Route("search")]
-        public async Task<IActionResult> Search(string prompt = null, int page = 1, int limit = 50)
-        {
-            try
-            {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                int offset = (page - 1) * limit;
-                var filters = new List<string>();
-
-                if (!string.IsNullOrEmpty(prompt))
-                    filters.Add($"prompt_text=ilike.*{Uri.EscapeDataString(prompt)}*");
-
-                var filterQuery = string.Join("&", filters);
-                var query = filterQuery + $"&order=created_at.desc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var messages = JsonConvert.DeserializeObject<List<ThreadMessage>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-
-                return Ok(new { success = true, data = messages, count = messages?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
         }
     }

@@ -7,20 +7,30 @@ namespace DualMind.API.Bot.Commands
 {
     public class StartCommandHandler
     {
+        private readonly ITelegramAuthService _authService;
         private readonly ITelegramBotTransport _transport;
         private readonly TelegramBotOptions _options;
 
-        public StartCommandHandler(ITelegramBotTransport transport, IOptions<TelegramBotOptions> options)
+        public StartCommandHandler(
+            ITelegramAuthService authService,
+            ITelegramBotTransport transport,
+            IOptions<TelegramBotOptions> options)
         {
+            _authService = authService;
             _transport = transport;
             _options = options.Value;
         }
 
-        public Task HandleAsync(long chatId, CancellationToken cancellationToken) =>
-            _transport.SendTextMessageAsync(
+        public async Task HandleAsync(long chatId, CancellationToken cancellationToken)
+        {
+            var session = await _authService.GetValidSessionAsync(chatId, cancellationToken);
+            await _transport.SendTextMessageAsync(
                 chatId,
-                TelegramMessageFormatter.FormatWelcomeMessage(),
-                TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
+                session == null ? TelegramMessageFormatter.FormatWelcomeMessage() : TelegramMessageFormatter.FormatSignedInMessage(),
+                session == null
+                    ? TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl)
+                    : TelegramMessageFormatter.BuildSignedInKeyboard(),
                 cancellationToken);
+        }
     }
 }

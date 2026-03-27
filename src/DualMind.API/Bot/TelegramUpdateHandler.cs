@@ -76,7 +76,7 @@ namespace DualMind.API.Bot
             {
                 if (update.IsCallback && update.CallbackQueryId != null)
                 {
-                    await _transport.AnswerCallbackQueryAsync(update.CallbackQueryId, "Use this bot in a private chat", false, cancellationToken);
+                    await _transport.AnswerCallbackQueryAsync(update.CallbackQueryId, TelegramMessageFormatter.FormatPrivateChatOnlyMessage(), false, cancellationToken);
                 }
 
                 return;
@@ -92,7 +92,7 @@ namespace DualMind.API.Bot
             {
                 await _transport.SendTextMessageAsync(
                     update.ChatId,
-                    "Invalid input\n\nPlease send text messages only in this version of the bot",
+                    TelegramMessageFormatter.FormatTextOnlyInputMessage(),
                     null,
                     cancellationToken);
                 return;
@@ -102,6 +102,32 @@ namespace DualMind.API.Bot
             if (TryHandleCommand(update.ChatId, text, cancellationToken, out var commandTask))
             {
                 await commandTask!;
+                return;
+            }
+
+            var pendingBattle = _stateCache.GetPendingBattle(update.ChatId);
+            if (pendingBattle != null)
+            {
+                await _transport.SendTextMessageAsync(
+                    update.ChatId,
+                    TelegramMessageFormatter.FormatBattleInProgressMessage(
+                        pendingBattle.Prompt,
+                        DateTimeOffset.UtcNow - pendingBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
+                    cancellationToken);
+                return;
+            }
+
+            var activeBattle = _stateCache.GetActiveBattle(update.ChatId);
+            if (activeBattle != null)
+            {
+                await _transport.SendTextMessageAsync(
+                    update.ChatId,
+                    TelegramMessageFormatter.FormatActiveBattleReminderMessage(
+                        activeBattle.Prompt,
+                        DateTimeOffset.UtcNow - activeBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
+                    cancellationToken);
                 return;
             }
 
@@ -118,7 +144,7 @@ namespace DualMind.API.Bot
                     await _battleCommandHandler.HandlePromptAsync(update.ChatId, text, cancellationToken);
                     break;
                 default:
-                    await _helpCommandHandler.HandleAsync(update.ChatId, cancellationToken);
+                    await HandleIdleTextAsync(update.ChatId, cancellationToken);
                     break;
             }
         }
@@ -142,7 +168,7 @@ namespace DualMind.API.Bot
                     await _helpCommandHandler.HandleAsync(update.ChatId, cancellationToken);
                     return;
                 case "action:cancel":
-                    await _transport.AnswerCallbackQueryAsync(update.CallbackQueryId, "Action cancelled", false, cancellationToken);
+                    await _transport.AnswerCallbackQueryAsync(update.CallbackQueryId, "Cancelled", false, cancellationToken);
                     await _cancelCommandHandler.HandleAsync(update.ChatId, cancellationToken);
                     return;
                 case "action:battle":
@@ -168,7 +194,7 @@ namespace DualMind.API.Bot
             await _transport.AnswerCallbackQueryAsync(update.CallbackQueryId, "Unknown action", false, cancellationToken);
             await _transport.SendTextMessageAsync(
                 update.ChatId,
-                "Unknown action\n\nUse /start to reset the chat flow",
+                TelegramMessageFormatter.FormatUnknownActionMessage(),
                 null,
                 cancellationToken);
         }
@@ -223,8 +249,8 @@ namespace DualMind.API.Bot
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "You are already signed in\n\nUse /battle to start a comparison or /stats to view the leaderboard",
-                    TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
+                    TelegramMessageFormatter.FormatAlreadySignedInMessage(),
+                    TelegramMessageFormatter.BuildSignedInKeyboard(),
                     cancellationToken);
                 return;
             }
@@ -232,7 +258,7 @@ namespace DualMind.API.Bot
             _stateCache.SetAwaitingEmail(chatId);
             await _transport.SendTextMessageAsync(
                 chatId,
-                "Welcome\n\nSend the email address you use for DualMind Arena",
+                TelegramMessageFormatter.FormatEmailPromptMessage(),
                 TelegramMessageFormatter.BuildCancelKeyboard(),
                 cancellationToken);
         }
@@ -243,7 +269,7 @@ namespace DualMind.API.Bot
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Invalid email\n\nSend a valid email address to continue",
+                    TelegramMessageFormatter.FormatInvalidEmailMessage(),
                     TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
                 return;
@@ -252,7 +278,7 @@ namespace DualMind.API.Bot
             _stateCache.SetAwaitingPassword(chatId, email);
             await _transport.SendTextMessageAsync(
                 chatId,
-                "Password required\n\nSend your password and I will delete that message immediately",
+                TelegramMessageFormatter.FormatPasswordPromptMessage(),
                 TelegramMessageFormatter.BuildCancelKeyboard(),
                 cancellationToken);
         }
@@ -266,7 +292,7 @@ namespace DualMind.API.Bot
                 _stateCache.SetAwaitingEmail(chatId);
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Session restarted\n\nSend your email address to continue",
+                    TelegramMessageFormatter.FormatSessionRestartedMessage(),
                     TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
                 return;
@@ -287,18 +313,30 @@ namespace DualMind.API.Bot
                 _stateCache.ClearConversationState(chatId);
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "You are signed in\n\nUse /battle to start a blind comparison or /stats to check the leaderboard",
-                    TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
+                    TelegramMessageFormatter.FormatSignedInMessage(),
+                    TelegramMessageFormatter.BuildSignedInKeyboard(),
                     cancellationToken);
             }
             catch (TelegramAuthException ex)
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    $"Sign in failed\n\n{TelegramMessageFormatter.EscapeMarkdown(ex.Message)}\n\nSend your password again or /cancel to stop",
+                    TelegramMessageFormatter.FormatSignInFailedMessage(ex.Message),
                     TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
             }
+        }
+
+        private async Task HandleIdleTextAsync(long chatId, CancellationToken cancellationToken)
+        {
+            var session = await _authService.GetValidSessionAsync(chatId, cancellationToken);
+            await _transport.SendTextMessageAsync(
+                chatId,
+                session == null ? TelegramMessageFormatter.FormatHelpMessage() : TelegramMessageFormatter.FormatSignedInIdleMessage(),
+                session == null
+                    ? TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl)
+                    : TelegramMessageFormatter.BuildSignedInKeyboard(),
+                cancellationToken);
         }
     }
 }

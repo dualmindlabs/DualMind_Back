@@ -30,6 +30,22 @@ namespace DualMind.API.Bot.Transport
         public Task DeleteWebhookAsync(bool dropPendingUpdates, CancellationToken cancellationToken) =>
             _client.DeleteWebhook(dropPendingUpdates, cancellationToken: cancellationToken);
 
+        public async Task<TelegramWebhookInfo> GetWebhookInfoAsync(CancellationToken cancellationToken)
+        {
+            var webhookInfo = await _client.GetWebhookInfo(cancellationToken);
+            return new TelegramWebhookInfo
+            {
+                Url = webhookInfo.Url
+            };
+        }
+
+        public Task SetWebhookAsync(string webhookUrl, string? secretToken, CancellationToken cancellationToken) =>
+            _client.SetWebhook(
+                url: webhookUrl,
+                allowedUpdates: new[] { UpdateType.Message, UpdateType.CallbackQuery },
+                secretToken: secretToken,
+                cancellationToken: cancellationToken);
+
         public async Task<IReadOnlyList<TelegramIncomingUpdate>> GetUpdatesAsync(long? offset, CancellationToken cancellationToken)
         {
             var updates = await _client.GetUpdates(
@@ -39,18 +55,20 @@ namespace DualMind.API.Bot.Transport
                 cancellationToken: cancellationToken);
 
             return updates
-                .Select(MapUpdate)
+                .Select(TelegramIncomingUpdateMapper.FromTelegramUpdate)
                 .Where(update => update != null)
                 .Cast<TelegramIncomingUpdate>()
                 .ToList();
         }
+
+        public Task SendTypingAsync(long chatId, CancellationToken cancellationToken) =>
+            _client.SendChatAction(chatId, ChatAction.Typing, cancellationToken: cancellationToken);
 
         public async Task<TelegramSentMessage> SendTextMessageAsync(long chatId, string text, InlineKeyboardMarkup? replyMarkup, CancellationToken cancellationToken)
         {
             var message = await _client.SendMessage(
                 chatId: chatId,
                 text: text,
-                parseMode: ParseMode.MarkdownV2,
                 replyMarkup: replyMarkup,
                 cancellationToken: cancellationToken);
 
@@ -68,7 +86,6 @@ namespace DualMind.API.Bot.Transport
                 chatId: chatId,
                 messageId: messageId,
                 text: text,
-                parseMode: ParseMode.MarkdownV2,
                 replyMarkup: replyMarkup,
                 cancellationToken: cancellationToken);
         }
@@ -83,26 +100,6 @@ namespace DualMind.API.Bot.Transport
         {
             var botCommands = commands.Select(c => new BotCommand { Command = c.Command, Description = c.Description });
             return _client.SetMyCommands(botCommands, cancellationToken: cancellationToken);
-        }
-
-        private TelegramIncomingUpdate? MapUpdate(Update update)
-        {
-            var chat = update.Message?.Chat ?? update.CallbackQuery?.Message?.Chat;
-            if (chat == null)
-            {
-                return null;
-            }
-
-            return new TelegramIncomingUpdate
-            {
-                UpdateId = update.Id,
-                ChatId = chat.Id,
-                ChatType = chat.Type.ToString().ToLowerInvariant(),
-                MessageId = update.Message?.MessageId ?? update.CallbackQuery?.Message?.MessageId ?? 0,
-                Text = update.Message?.Text,
-                CallbackQueryId = update.CallbackQuery?.Id,
-                CallbackData = update.CallbackQuery?.Data
-            };
         }
     }
 }

@@ -108,12 +108,38 @@ public sealed class FakeTelegramBotTransport : ITelegramBotTransport
     public List<(long ChatId, int MessageId)> DeletedMessages { get; } = new();
     public List<CallbackAnswerRecord> CallbackAnswers { get; } = new();
     public List<TelegramBotCommand> RegisteredCommands { get; } = new();
+    public List<long> TypingChatIds { get; } = new();
+    public List<SetWebhookRecord> SetWebhookRequests { get; } = new();
+    public string? CurrentWebhookUrl { get; set; }
+    public int GetUpdatesCallCount { get; private set; }
 
-    public Task DeleteWebhookAsync(bool dropPendingUpdates, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    public Task DeleteWebhookAsync(bool dropPendingUpdates, CancellationToken cancellationToken)
+    {
+        CurrentWebhookUrl = null;
+        return Task.CompletedTask;
+    }
+
+    public Task<TelegramWebhookInfo> GetWebhookInfoAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new TelegramWebhookInfo
+        {
+            Url = CurrentWebhookUrl
+        });
+
+    public Task SetWebhookAsync(string webhookUrl, string? secretToken, CancellationToken cancellationToken)
+    {
+        CurrentWebhookUrl = webhookUrl;
+        SetWebhookRequests.Add(new SetWebhookRecord(webhookUrl, secretToken));
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<TelegramIncomingUpdate>> GetUpdatesAsync(long? offset, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<TelegramIncomingUpdate>>(Array.Empty<TelegramIncomingUpdate>());
+        Task.FromResult<IReadOnlyList<TelegramIncomingUpdate>>(TrackGetUpdatesCall());
+
+    public Task SendTypingAsync(long chatId, CancellationToken cancellationToken)
+    {
+        TypingChatIds.Add(chatId);
+        return Task.CompletedTask;
+    }
 
     public Task<TelegramSentMessage> SendTextMessageAsync(long chatId, string text, InlineKeyboardMarkup? replyMarkup, CancellationToken cancellationToken)
     {
@@ -151,11 +177,18 @@ public sealed class FakeTelegramBotTransport : ITelegramBotTransport
         RegisteredCommands.AddRange(commands);
         return Task.CompletedTask;
     }
+
+    private IReadOnlyList<TelegramIncomingUpdate> TrackGetUpdatesCall()
+    {
+        GetUpdatesCallCount++;
+        return Array.Empty<TelegramIncomingUpdate>();
+    }
 }
 
 public sealed record SentMessageRecord(TelegramSentMessage Message, InlineKeyboardMarkup? ReplyMarkup);
 public sealed record EditedMessageRecord(long ChatId, int MessageId, string Text, InlineKeyboardMarkup? ReplyMarkup);
 public sealed record CallbackAnswerRecord(string CallbackQueryId, string? Text, bool ShowAlert);
+public sealed record SetWebhookRecord(string Url, string? SecretToken);
 
 public sealed class FakeSupabaseTelegramAuthClient : ISupabaseTelegramAuthClient
 {
@@ -260,6 +293,7 @@ public static class TestBattleFactory
             AgentBResponse = "Response B",
             AgentAModelDisplayName = "Model A",
             AgentBModelDisplayName = "Model B",
+            StatusMessageId = 99,
             AgentAMessageId = 100,
             AgentBMessageId = 101,
             StartedAt = DateTimeOffset.UtcNow.AddSeconds(-10)

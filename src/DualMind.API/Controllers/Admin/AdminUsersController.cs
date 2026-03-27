@@ -1,12 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 using Newtonsoft.Json;
@@ -14,6 +9,7 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/users")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
     public class AdminUsersController : ControllerBase
     {
         private readonly IAdminSupabaseClient _supabase;
@@ -25,33 +21,79 @@ namespace DualMind.API.Controllers.Admin
             _supabase = supabase;
         }
 
-        // GET api/admin/users - Get all users
-        [HttpGet]
-        [Route("")]
-        public async Task<IActionResult> GetAll(int page = 1, int limit = 200)
+        /// <summary>
+        /// GET api/admin/users?page=&pageSize=&search=&role=
+        /// </summary>
+        [HttpGet("")]
+        public async Task<IActionResult> GetAll(int page = 1, int pageSize = 50, string search = null, string role = null)
         {
             try
             {
                 if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
+                if (pageSize < 1) pageSize = 1;
+                if (pageSize > 500) pageSize = 500;
 
-                int offset = (page - 1) * limit;
-                var result = await _supabase.GetAllAsync(TABLE, $"order=created_at.desc&limit={limit}&offset={offset}");
+                int offset = (page - 1) * pageSize;
+                var filters = new List<string>();
+
+                if (!string.IsNullOrEmpty(search))
+                    filters.Add($"or=(email.ilike.*{Uri.EscapeDataString(search)}*,full_name.ilike.*{Uri.EscapeDataString(search)}*)");
+                if (!string.IsNullOrEmpty(role))
+                    filters.Add($"role=eq.{Uri.EscapeDataString(role)}");
+
+                var filterQuery = string.Join("&", filters);
+                var query = (string.IsNullOrEmpty(filterQuery) ? "" : filterQuery + "&") + $"order=created_at.desc&limit={pageSize}&offset={offset}";
+
+                var result = await _supabase.GetAllAsync(TABLE, query);
                 var users = JsonConvert.DeserializeObject<List<User>>(result);
 
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN);
-                return Ok(new { success = true, data = users, count = users?.Count ?? 0, total = total, page = page, limit = limit });
+                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
+
+                return Ok(new ApiResponse<List<User>> { Success = true, Data = users, Total = total, Page = page, PageSize = pageSize });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<List<User>> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/users/{id} - Get user by ID
-        [HttpGet]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// POST api/admin/users
+        /// </summary>
+        [HttpPost("")]
+        public async Task<IActionResult> Create([FromBody] UserCreateRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request?.FullName) || string.IsNullOrEmpty(request?.Email))
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = "Full name and email are required" });
+
+                if (!string.IsNullOrWhiteSpace(request.Role))
+                {
+                    request.Role = request.Role.Trim().ToLowerInvariant();
+                    if (!AdminFieldRules.IsAllowedRole(request.Role))
+                        return BadRequest(new ApiResponse<User> { Success = false, Error = "Role must be one of: admin, user" });
+                }
+
+                var response = await _supabase.CreateAsync(TABLE, request);
+                var content = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = content });
+
+                var users = JsonConvert.DeserializeObject<List<User>>(content);
+                return Ok(new ApiResponse<User> { Success = true, Data = users?[0] });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<User> { Success = false, Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// GET api/admin/users/{id}
+        /// </summary>
+        [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id)
         {
             try
@@ -60,66 +102,50 @@ namespace DualMind.API.Controllers.Admin
                 var users = JsonConvert.DeserializeObject<List<User>>(result);
 
                 if (users == null || users.Count == 0)
-                    return NotFound();
+                    return NotFound(new ApiResponse<User> { Success = false, Error = "User not found" });
 
-                return Ok(new { success = true, data = users[0] });
+                return Ok(new ApiResponse<User> { Success = true, Data = users[0] });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<User> { Success = false, Error = ex.Message });
             }
         }
 
-        // POST api/admin/users - Create new user
-        [HttpPost]
-        [Route("")]
-        public async Task<IActionResult> Create([FromBody] UserCreateRequest request)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(request?.FullName) || string.IsNullOrEmpty(request?.Email))
-                    return BadRequest("Full name and email are required");
-
-                var response = await _supabase.CreateAsync(TABLE, request);
-                var content = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                    return BadRequest( new { success = false, error = content });
-
-                var users = JsonConvert.DeserializeObject<List<User>>(content);
-                return Ok(new { success = true, data = users?[0], message = "User created successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // PUT api/admin/users/{id} - Update user
-        [HttpPut]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// PUT api/admin/users/{id}
+        /// </summary>
+        [HttpPut("{id:guid}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UserUpdateRequest request)
         {
             try
             {
+                if (!string.IsNullOrWhiteSpace(request?.Role))
+                {
+                    request.Role = request.Role.Trim().ToLowerInvariant();
+                    if (!AdminFieldRules.IsAllowedRole(request.Role))
+                        return BadRequest(new ApiResponse<User> { Success = false, Error = "Role must be one of: admin, user" });
+                }
+
                 var response = await _supabase.UpdateAsync(TABLE, ID_COLUMN, id.ToString(), request);
                 var content = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
-                    return BadRequest( new { success = false, error = content });
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = content });
 
                 var users = JsonConvert.DeserializeObject<List<User>>(content);
-                return Ok(new { success = true, data = users?[0], message = "User updated successfully" });
+                return Ok(new ApiResponse<User> { Success = true, Data = users?[0] });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<User> { Success = false, Error = ex.Message });
             }
         }
 
-        // DELETE api/admin/users/{id} - Delete user
-        [HttpDelete]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// DELETE api/admin/users/{id}
+        /// </summary>
+        [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             try
@@ -129,72 +155,45 @@ namespace DualMind.API.Controllers.Admin
                 if (!response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    return BadRequest( new { success = false, error = content });
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
                 }
 
-                return Ok(new { success = true, message = "User deleted successfully" });
+                return Ok(new ApiResponse<object> { Success = true, Message = "User deleted successfully" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/users/search?email=xxx - Search users by email
-        [HttpGet]
-        [Route("search")]
-        public async Task<IActionResult> Search(string email = null, string role = null, int page = 1, int limit = 200)
+        /// <summary>
+        /// PATCH api/admin/users/{id}/role  body: { role: string }
+        /// </summary>
+        [HttpPatch("{id:guid}/role")]
+        public async Task<IActionResult> UpdateRole(Guid id, [FromBody] RoleUpdateRequest request)
         {
             try
             {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
+                if (string.IsNullOrEmpty(request?.Role))
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = "Role is required" });
 
-                int offset = (page - 1) * limit;
-                var filters = new List<string>();
-                if (!string.IsNullOrEmpty(email))
-                    filters.Add($"email=ilike.*{Uri.EscapeDataString(email)}*");
-                if (!string.IsNullOrEmpty(role))
-                    filters.Add($"role=eq.{Uri.EscapeDataString(role)}");
+                request.Role = request.Role.Trim().ToLowerInvariant();
+                if (!AdminFieldRules.IsAllowedRole(request.Role))
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = "Role must be one of: admin, user" });
 
-                var filterQuery = string.Join("&", filters);
-                var query = filterQuery + $"&order=created_at.desc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var users = JsonConvert.DeserializeObject<List<User>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-                return Ok(new { success = true, data = users, count = users?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // PUT api/admin/users/{id}/role - Update user role
-        [HttpPut]
-        [Route("{id:guid}/role")]
-        public async Task<IActionResult> UpdateRole(Guid id, [FromBody] dynamic request)
-        {
-            try
-            {
-                string role = request?.role;
-                if (string.IsNullOrEmpty(role))
-                    return BadRequest("Role is required");
-
-                var updateData = new { role = role };
+                var updateData = new { role = request.Role };
                 var response = await _supabase.UpdateAsync(TABLE, ID_COLUMN, id.ToString(), updateData);
                 var content = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
-                    return BadRequest( new { success = false, error = content });
+                    return BadRequest(new ApiResponse<User> { Success = false, Error = content });
 
-                return Ok(new { success = true, message = $"User role updated to {role}" });
+                var users = JsonConvert.DeserializeObject<List<User>>(content);
+                return Ok(new ApiResponse<User> { Success = true, Data = users?[0] });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<User> { Success = false, Error = ex.Message });
             }
         }
     }
