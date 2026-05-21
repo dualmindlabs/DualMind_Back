@@ -208,8 +208,17 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-app.UseSwagger();
-app.UseSwaggerUI();
+var enableSwaggerInProduction =
+    string.Equals(
+        Environment.GetEnvironmentVariable("ENABLE_SWAGGER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+if (app.Environment.IsDevelopment() || enableSwaggerInProduction)
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // Global Exception Handler with proper logging
 app.UseExceptionHandler(exceptionHandlerApp =>
