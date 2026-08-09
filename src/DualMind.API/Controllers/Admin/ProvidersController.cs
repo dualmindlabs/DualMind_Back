@@ -1,21 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DualMind.API.Core.Models;
 using DualMind.API.Core.Services;
 using DualMind.API.Infrastructure.Data;
-using Newtonsoft.Json.Linq;
 
 namespace DualMind.API.Controllers.Admin
 {
-    [Route("api/admin")]
+    [Route("api/admin/providers")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
     public class ProvidersController : ControllerBase
     {
         private readonly IAdminSupabaseClient _supabase;
@@ -27,112 +22,104 @@ namespace DualMind.API.Controllers.Admin
             _configService = configService;
         }
 
-        // --- PROVIDERS ---
-
-        [HttpGet]
-        [Route("providers")]
+        /// <summary>
+        /// GET api/admin/providers — list all providers
+        /// </summary>
+        [HttpGet("")]
         public async Task<IActionResult> GetProviders()
         {
             try
             {
-                // Force refresh to ensure fresh data for admin
                 await _configService.RefreshConfigAsync();
                 var providers = await _configService.GetAllProvidersAsync();
 
-                // Enrich with key counts
                 foreach (var p in providers)
                 {
                     var keys = await _configService.GetKeysForProviderAsync(p.ProviderName);
                     p.KeyCount = keys.Count;
                 }
-
-                // Return sample data if no real providers exist
-                if (providers == null || providers.Count == 0)
-                {
-                    Console.WriteLine("[ProvidersController] No providers in database, returning sample data");
-                    providers = new List<Provider>
-                    {
-                        new Provider
-                        {
-                            ProviderName = "openai",
-                            DisplayName = "OpenAI",
-                            IsEnabled = true,
-                            Priority = 1,
-                            KeyCount = 3,
-                            CreatedAt = DateTime.UtcNow
-                        },
-                        new Provider
-                        {
-                            ProviderName = "anthropic",
-                            DisplayName = "Anthropic",
-                            IsEnabled = true,
-                            Priority = 2,
-                            KeyCount = 2,
-                            CreatedAt = DateTime.UtcNow
-                        },
-                        new Provider
-                        {
-                            ProviderName = "google",
-                            DisplayName = "Google",
-                            IsEnabled = false,
-                            Priority = 3,
-                            KeyCount = 1,
-                            CreatedAt = DateTime.UtcNow
-                        }
-                    };
-                }
-
-                return Ok(new { success = true, data = providers });
+                return Ok(new ApiResponse<List<Provider>> { Success = true, Data = providers, Total = providers.Count });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ProvidersController] GetProviders error: {ex.Message}\n{ex.StackTrace}");
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<List<Provider>> { Success = false, Error = ex.Message });
             }
         }
 
-        [HttpPost]
-        [Route("providers")]
+        /// <summary>
+        /// POST api/admin/providers — create provider
+        /// </summary>
+        [HttpPost("")]
         public async Task<IActionResult> CreateProvider([FromBody] ProviderCreateRequest request)
         {
-            if (request == null || string.IsNullOrWhiteSpace(request.ProviderName) || string.IsNullOrWhiteSpace(request.DisplayName))
-                return BadRequest("Invalid provider data");
-
             try
             {
-                var newProvider = new Provider
+                if (string.IsNullOrWhiteSpace(request?.ProviderName) || string.IsNullOrWhiteSpace(request?.DisplayName))
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = "provider_name and display_name are required" });
+
+                var newProvider = new
                 {
-                    ProviderName = request.ProviderName,
-                    DisplayName = request.DisplayName,
-                    IsEnabled = request.IsEnabled,
-                    Priority = request.Priority,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    provider_name = request.ProviderName.ToLowerInvariant(),
+                    display_name = request.DisplayName,
+                    is_enabled = request.IsEnabled,
+                    priority = request.Priority,
+                    created_at = DateTime.UtcNow,
+                    updated_at = DateTime.UtcNow
                 };
 
-                // Insert into Supabase
-                await _supabase.CreateAsync("providers", newProvider);
+                var response = await _supabase.CreateAsync("providers", newProvider);
+                var content = await response.Content.ReadAsStringAsync();
 
-                // Refresh cache
+                if (!response.IsSuccessStatusCode)
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
+
                 await _configService.RefreshConfigAsync();
-
-                return Ok(new { success = true, data = newProvider });
+                return Ok(new ApiResponse<object> { Success = true, Data = newProvider });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
         }
 
-        [HttpPut]
-        [Route("providers/{name}")]
-        public async Task<IActionResult> UpdateProvider(string name, [FromBody] ProviderUpdateRequest request)
+        /// <summary>
+        /// GET api/admin/providers/{name} — single provider
+        /// </summary>
+        [HttpGet("{name}")]
+        public async Task<IActionResult> GetProvider(string name)
         {
-            if (string.IsNullOrWhiteSpace(name) || request == null)
-                return BadRequest("Invalid request");
-
             try
             {
+                await _configService.RefreshConfigAsync();
+                var providers = await _configService.GetAllProvidersAsync();
+                var provider = providers.FirstOrDefault(p =>
+                    string.Equals(p.ProviderName, name, StringComparison.OrdinalIgnoreCase));
+
+                if (provider == null)
+                    return NotFound(new ApiResponse<object> { Success = false, Error = "Provider not found" });
+
+                var keys = await _configService.GetKeysForProviderAsync(provider.ProviderName);
+                provider.KeyCount = keys.Count;
+
+                return Ok(new ApiResponse<dynamic> { Success = true, Data = provider });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<dynamic> { Success = false, Error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// PUT api/admin/providers/{name} — update provider
+        /// </summary>
+        [HttpPut("{name}")]
+        public async Task<IActionResult> UpdateProvider(string name, [FromBody] ProviderUpdateRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(name) || request == null)
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = "Invalid request" });
+
                 var updateData = new
                 {
                     display_name = request.DisplayName,
@@ -141,134 +128,47 @@ namespace DualMind.API.Controllers.Admin
                     updated_at = DateTime.UtcNow
                 };
 
-                await _supabase.UpdateAsync("providers", "provider_name", name, updateData);
+                var response = await _supabase.UpdateAsync("providers", "provider_name", name.ToLowerInvariant(), updateData);
+                var content = await response.Content.ReadAsStringAsync();
 
-                // Refresh cache
+                if (!response.IsSuccessStatusCode)
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
+
                 await _configService.RefreshConfigAsync();
-
-                return Ok(new { success = true });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Provider updated" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
         }
 
-        // --- KEYS ---
-
-        [HttpGet]
-        [Route("providers/{name}/keys")]
-        public async Task<IActionResult> GetProviderKeys(string name)
+        /// <summary>
+        /// DELETE api/admin/providers/{name} — delete provider
+        /// </summary>
+        [HttpDelete("{name}")]
+        public async Task<IActionResult> DeleteProvider(string name)
         {
             try
             {
-                // Ensure fresh data
+                if (string.IsNullOrWhiteSpace(name))
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = "Provider name is required" });
+
+                var response = await _supabase.DeleteAsync("providers", "provider_name", name.ToLowerInvariant());
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
+                }
+
                 await _configService.RefreshConfigAsync();
-
-                var keys = await _configService.GetKeysForProviderAsync(name);
-
-                // Return full keys including API key for admin panel
-                return Ok(new { success = true, data = keys });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Provider deleted successfully" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
-        }
-
-        [HttpPost]
-        [Route("providers/{name}/keys")]
-        public async Task<IActionResult> AddProviderKey(string name, [FromBody] ProviderApiKeyCreateRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(name) || request == null || string.IsNullOrWhiteSpace(request.ApiKey))
-                return BadRequest("Invalid key data");
-
-            try
-            {
-                var rawKey = request.ApiKey.Trim();
-                var mask = rawKey.Length > 4
-                    ? "..." + rawKey.Substring(rawKey.Length - 4)
-                    : "..." + rawKey;
-
-                var newKey = new ProviderApiKey
-                {
-                    KeyId = Guid.NewGuid(),
-                    ProviderName = name,
-                    ApiKey = rawKey,
-                    DisplayMask = mask,
-                    IsActive = request.IsActive,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                };
-
-                var dbObj = new
-                {
-                    key_id = newKey.KeyId,
-                    provider_name = newKey.ProviderName,
-                    api_key = newKey.ApiKey,
-                    display_mask = newKey.DisplayMask,
-                    is_active = newKey.IsActive,
-                    created_at = newKey.CreatedAt,
-                    updated_at = newKey.UpdatedAt
-                };
-
-                await _supabase.CreateAsync("provider_api_keys", dbObj);
-
-                // Refresh cache
-                await _configService.RefreshConfigAsync();
-
-                return Ok(new { success = true, data = newKey.KeyId });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        [HttpPut]
-        [Route("keys/{id}/status")]
-        public async Task<IActionResult> UpdateKeyStatus(string id, [FromBody] ProviderApiKeyStatusUpdate request)
-        {
-            if (string.IsNullOrWhiteSpace(id) || request == null)
-                return BadRequest("Invalid request");
-
-            try
-            {
-                var updateData = new
-                {
-                    is_active = request.IsActive,
-                    updated_at = DateTime.UtcNow
-                };
-
-                await _supabase.UpdateAsync("provider_api_keys", "key_id", id, updateData);
-
-                // Refresh cache
-                await _configService.RefreshConfigAsync();
-
-                return Ok(new { success = true });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        [HttpDelete]
-        [Route("keys/{id}")]
-        public async Task<IActionResult> DeleteKey(string id)
-        {
-             if (string.IsNullOrWhiteSpace(id)) return BadRequest("Invalid ID");
-
-             try
-             {
-                 await _supabase.DeleteAsync("provider_api_keys", "key_id", id);
-                 await _configService.RefreshConfigAsync();
-                 return Ok(new { success = true });
-             }
-             catch(Exception ex)
-             {
-                 return StatusCode(500, new { success = false, error = ex.Message });
-             }
         }
     }
 }

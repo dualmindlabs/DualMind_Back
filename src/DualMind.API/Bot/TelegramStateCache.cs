@@ -59,6 +59,65 @@ namespace DualMind.API.Bot
             }
         }
 
+        public PendingBattleOperation BeginPendingBattle(long chatId, string prompt, int statusMessageId, CancellationToken cancellationToken)
+        {
+            var state = GetState(chatId);
+            var pendingBattle = new PendingBattleOperation(
+                prompt,
+                statusMessageId,
+                _timeProvider.GetUtcNow(),
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
+
+            lock (state.SyncRoot)
+            {
+                state.PendingBattle = pendingBattle;
+                state.Mode = TelegramUserMode.Idle;
+            }
+
+            return pendingBattle;
+        }
+
+        public PendingBattleOperation? GetPendingBattle(long chatId)
+        {
+            var state = GetState(chatId);
+            lock (state.SyncRoot)
+            {
+                return state.PendingBattle;
+            }
+        }
+
+        public bool TryCompletePendingBattle(long chatId, Guid operationId, out PendingBattleOperation? pendingBattle)
+        {
+            var state = GetState(chatId);
+            lock (state.SyncRoot)
+            {
+                pendingBattle = state.PendingBattle;
+                if (pendingBattle == null || pendingBattle.OperationId != operationId)
+                {
+                    pendingBattle = null;
+                    return false;
+                }
+
+                state.PendingBattle = null;
+                return true;
+            }
+        }
+
+        public PendingBattleOperation? CancelPendingBattle(long chatId)
+        {
+            PendingBattleOperation? pendingBattle;
+            var state = GetState(chatId);
+            lock (state.SyncRoot)
+            {
+                pendingBattle = state.PendingBattle;
+                state.PendingBattle = null;
+                state.Mode = TelegramUserMode.Idle;
+            }
+
+            pendingBattle?.Cancel();
+            return pendingBattle;
+        }
+
         public async Task<TelegramAuthSession?> GetSessionAsync(long chatId, CancellationToken cancellationToken)
         {
             var state = GetState(chatId);
@@ -137,6 +196,7 @@ namespace DualMind.API.Bot
             var state = GetState(chatId);
             lock (state.SyncRoot)
             {
+                state.PendingBattle = null;
                 state.ActiveBattle = battleSession;
                 state.Mode = TelegramUserMode.Idle;
             }
@@ -173,6 +233,18 @@ namespace DualMind.API.Bot
             {
                 state.ActiveBattle?.MarkVoteSubmitted();
                 state.ActiveBattle = null;
+            }
+        }
+
+        public BattleSession? ClearActiveBattle(long chatId)
+        {
+            var state = GetState(chatId);
+            lock (state.SyncRoot)
+            {
+                var activeBattle = state.ActiveBattle;
+                state.ActiveBattle = null;
+                state.Mode = TelegramUserMode.Idle;
+                return activeBattle;
             }
         }
     }

@@ -110,4 +110,9 @@ namespace DualMind.API.Bot.Models
         public int MessageId { get; set; }
         public string? Text { get; set; }
     }
+
+    public sealed class TelegramWebhookInfo
+    {
+        public string? Url { get; set; }
+    }
 }

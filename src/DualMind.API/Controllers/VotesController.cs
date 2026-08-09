@@ -86,7 +86,7 @@ namespace DualMind.API.Controllers
             try
             {
                 var stats = await _modelStatsService.GetModelStatsAsync();
-                return Ok(new { items = stats });
+                return Ok(new { success = true, items = stats });
             }
             catch (Exception ex)
             {

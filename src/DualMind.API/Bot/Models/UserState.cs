@@ -16,6 +16,7 @@ namespace DualMind.API.Bot.Models
 
         public TelegramUserMode Mode { get; set; } = TelegramUserMode.Idle;
         public string? PendingEmail { get; set; }
+        public PendingBattleOperation? PendingBattle { get; set; }
         public DateTimeOffset? CooldownUntil { get; set; }
         public BattleSession? ActiveBattle { get; set; }
         public TelegramAuthSession? Session { get; set; }

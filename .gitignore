@@ -1,3 +1,147 @@
+# Global ignores for .NET / ASP.NET Core
+bin/
+obj/
+out/
+TestResults/
+*.user
+*.userosscache
+*.suo
+*.ntvs*
+*.njsproj
+*.psess
+*.vsp
+*.vspscc
+*.dbmdl
+*.pdb
+*.cache
+
+# NuGet
+*.nupkg
+# The packages folder can be ignored because of Package Restore
+**/packages/
+
+# Build outputs
+*.dll
+*.exe
+*.app
+*.msi
+*.cab
+*.msix
+*.obj
+
+# VS Code
+.vscode/
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.csproj.user
+
+# Rider
+.idea/
+*.sln.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor swap/temporary files
+*~
+*.swp
+*.swo
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+.cache/
+crash-reports/
+
+# Secrets and env
+.env
+.env.*
+*.env
+!.env.example
+secrets.*
+*.secret
+config.local.*
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+docker-compose.override.yml
+docker-compose.*.yml
+**/docker-compose.override.yml
+
+# Testing
+coverage/
+coverage.*
+
+# Generated documentation and AI/docs artifacts
+*_COMPLETE_*
+*_TECHNICAL_OVERVIEW*
+*_complete_technical*
+knowledge/
+knowledge_base/
+.knowledge/
+docs/ai-*
+docs/generated-*
+*_ai_context.*
+*_context.ai.*
+*_COMPLETE_*
+
+# AI / Assistant artifacts and IDE assistants
+.cursor/
+.cursorignore
+.cursorules
+cursor.json
+.windsurf/
+.windsurfrules
+.copilot/
+.github/copilot-instructions.md
+.aider*
+aider.conf.yml
+.cline/
+cline_docs/
+.continue/
+*.ai.md
+ai-context/
+ai-notes/
+ai-docs/
+CLAUDE.md
+claude.md
+.claude/
+.agentic/
+agent-context/
+llm-context/
+llm_context/
+*copilot*
+*cursor*
+*windsurf*
+*aider*
+*cline*
+
+# Auto-generated markdown/docs
+*.auto.md
+*.generated.md
+
+# Temporary build artifacts and caches
+.tmp-build/
+dist/
+publish/
+
+# Database
+*.bak
+*.sql
+
+# IDE-specific
+*.iml
 # User-specific files
 *.rsuser
 *.suo

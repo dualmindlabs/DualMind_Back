@@ -27,6 +27,9 @@ namespace DualMind.API.Core.Models
         // Optional: Count of keys for UI
         [JsonProperty("key_count")]
         public int? KeyCount { get; set; }
+
+        [JsonProperty("status")]
+        public string Status => IsEnabled ? "active" : "inactive";
     }
 
     public class ProviderCreateRequest

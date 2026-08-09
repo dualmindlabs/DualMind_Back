@@ -27,8 +27,12 @@ namespace DualMind.API.Core.Services
             {
                 var safeEmail = email ?? $"user_{authUserId}@placeholder.com";
                 
+                // 🚨 FIX: Don't overwrite existing roles (e.g., admin)
+                // First, try to get the existing user's role
+                var existingUser = await _supabase.SelectSingleAsync<JObject>("users", "role", $"user_id=eq.{authUserId}");
+                var role = existingUser?["role"]?.ToString() ?? "user";
+
                 // Create/Update user row in public.users using Upsert
-                // This handles race conditions where a DB trigger might have already inserted the user
                 var user = new
                 {
                     user_id = authUserId,
@@ -36,8 +40,7 @@ namespace DualMind.API.Core.Services
                     full_name = string.IsNullOrWhiteSpace(fullName)
                         ? safeEmail.Split('@')[0] // Fallback to email prefix
                         : fullName,
-                    role = "user"
-                    // created_at = DateTime.UtcNow // Exclude created_at from upsert to preserve original value
+                    role = role
                 };
 
                 await _supabase.UpsertAsync<object>("users", user);

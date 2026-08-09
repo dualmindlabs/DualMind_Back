@@ -1,4 +1,7 @@
 using System;
+using System.Security.Cryptography;
+using System.Text;
+using System.Linq;
 using DualMind.API.Bot.Commands;
 using DualMind.API.Bot.Transport;
 using DualMind.API.Core.Services;
@@ -18,10 +21,22 @@ namespace DualMind.API.Bot
                 .Bind(configuration.GetSection("Telegram"));
 
             var options = configuration.GetSection("Telegram").Get<TelegramBotOptions>() ?? new TelegramBotOptions();
-            if (!options.IsEnabled)
+            var resolvedApiBaseUrl = ResolveApiBaseUrl(options.ApiBaseUrl, configuration);
+            var resolvedWebhookSecretToken = ResolveWebhookSecretToken(options.WebhookSecretToken, options.BotToken);
+            if (string.IsNullOrWhiteSpace(options.BotToken) || string.IsNullOrWhiteSpace(resolvedApiBaseUrl))
             {
                 return false;
             }
+
+            services.PostConfigure<TelegramBotOptions>(telegramOptions =>
+            {
+                telegramOptions.ApiBaseUrl = resolvedApiBaseUrl;
+                telegramOptions.WebhookSecretToken = resolvedWebhookSecretToken;
+                if (string.IsNullOrWhiteSpace(telegramOptions.WebhookPath))
+                {
+                    telegramOptions.WebhookPath = "/api/telegram/webhook";
+                }
+            });
 
             services.TryAddSingleton(TimeProvider.System);
             services.TryAddSingleton<EncryptionService>();
@@ -70,6 +85,61 @@ namespace DualMind.API.Bot
             services.AddHostedService<TelegramBotService>();
 
             return true;
+        }
+
+        private static string? ResolveApiBaseUrl(string? configuredApiBaseUrl, IConfiguration configuration)
+        {
+            var websiteHostname = configuration["WEBSITE_HOSTNAME"] ?? Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME");
+            if (!string.IsNullOrWhiteSpace(websiteHostname))
+            {
+                if (string.IsNullOrWhiteSpace(configuredApiBaseUrl) || IsLocalhostUrl(configuredApiBaseUrl))
+                {
+                    return $"https://{websiteHostname}";
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(configuredApiBaseUrl))
+            {
+                return configuredApiBaseUrl;
+            }
+
+            var aspNetCoreUrls = configuration["ASPNETCORE_URLS"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+            if (string.IsNullOrWhiteSpace(aspNetCoreUrls))
+            {
+                return null;
+            }
+
+            return aspNetCoreUrls
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault(url => Uri.TryCreate(url, UriKind.Absolute, out _));
+        }
+
+        private static bool IsLocalhostUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+
+            return uri.IsLoopback ||
+                   string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? ResolveWebhookSecretToken(string? configuredSecretToken, string? botToken)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredSecretToken))
+            {
+                return configuredSecretToken;
+            }
+
+            if (string.IsNullOrWhiteSpace(botToken))
+            {
+                return null;
+            }
+
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes($"dualmind-telegram:{botToken}"));
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
     }
 }

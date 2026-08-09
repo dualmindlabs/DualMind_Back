@@ -7,6 +7,7 @@ using DualMind.API.Bot.Transport;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Telegram.Bot.Exceptions;
 
 namespace DualMind.API.Bot
 {
@@ -37,17 +38,29 @@ namespace DualMind.API.Bot
                 return;
             }
 
-            long? offset = null;
-
             try
             {
-                await _transport.DeleteWebhookAsync(false, stoppingToken);
                 await SetBotCommandsAsync(stoppingToken);
+
+                if (_options.UseWebhookDelivery())
+                {
+                    await EnsureWebhookAsync(stoppingToken);
+                    await WaitForShutdownAsync(stoppingToken);
+                    return;
+                }
+
+                if (!await PrepareLongPollingAsync(stoppingToken))
+                {
+                    await WaitForShutdownAsync(stoppingToken);
+                    return;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to initialize Telegram bot commands or webhook.");
             }
+
+            long? offset = null;
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -64,6 +77,11 @@ namespace DualMind.API.Bot
                 {
                     break;
                 }
+                catch (ApiRequestException ex) when (ex.ErrorCode == 409)
+                {
+                    _logger.LogError(ex, "Telegram long polling conflict detected. Another process is already polling this bot token. Stopping long polling for this instance.");
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Telegram long polling failed; retrying shortly.");
@@ -71,6 +89,7 @@ namespace DualMind.API.Bot
                 }
             }
         }
+
         private async Task SetBotCommandsAsync(CancellationToken cancellationToken)
         {
             var commands = new List<TelegramBotCommand>
@@ -84,6 +103,64 @@ namespace DualMind.API.Bot
 
             await _transport.SetMyCommandsAsync(commands, cancellationToken);
             _logger.LogInformation("Telegram bot commands registered successfully.");
+        }
+
+        private async Task EnsureWebhookAsync(CancellationToken cancellationToken)
+        {
+            var webhookUrl = _options.GetWebhookUrl();
+            if (string.IsNullOrWhiteSpace(webhookUrl))
+            {
+                _logger.LogError("Telegram webhook delivery is enabled, but the webhook URL could not be resolved.");
+                return;
+            }
+
+            await _transport.SetWebhookAsync(webhookUrl, _options.WebhookSecretToken, cancellationToken);
+            _logger.LogInformation("Telegram webhook configured for {WebhookUrl}", webhookUrl);
+        }
+
+        private async Task<bool> PrepareLongPollingAsync(CancellationToken cancellationToken)
+        {
+            var webhookInfo = await _transport.GetWebhookInfoAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(webhookInfo.Url))
+            {
+                return true;
+            }
+
+            var localWebhookUrl = _options.GetWebhookUrl();
+            if (!string.IsNullOrWhiteSpace(localWebhookUrl) && UrlsMatch(webhookInfo.Url, localWebhookUrl))
+            {
+                _logger.LogInformation("Removing Telegram webhook at {WebhookUrl} so long polling can start.", webhookInfo.Url);
+                await _transport.DeleteWebhookAsync(false, cancellationToken);
+                return true;
+            }
+
+            _logger.LogError(
+                "Telegram webhook is already configured for {WebhookUrl}. Refusing to delete it for long polling. Use webhook delivery or a separate bot token for local polling.",
+                webhookInfo.Url);
+
+            return false;
+        }
+
+        private static bool UrlsMatch(string left, string right)
+        {
+            if (!Uri.TryCreate(left, UriKind.Absolute, out var leftUri) ||
+                !Uri.TryCreate(right, UriKind.Absolute, out var rightUri))
+            {
+                return false;
+            }
+
+            return Uri.Compare(leftUri, rightUri, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
+        private static async Task WaitForShutdownAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
         }
     }
 }

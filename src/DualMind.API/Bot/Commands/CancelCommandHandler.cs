@@ -19,12 +19,67 @@ namespace DualMind.API.Bot.Commands
 
         public Task HandleAsync(long chatId, CancellationToken cancellationToken)
         {
+            var pendingBattle = _stateCache.CancelPendingBattle(chatId);
             _stateCache.ClearConversationState(chatId);
+
+            if (pendingBattle != null)
+            {
+                _ = TryUpdatePendingBattleStatusAsync(chatId, pendingBattle.StatusMessageId, cancellationToken);
+                return _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatBattleCancelledMessage(),
+                    TelegramMessageFormatter.BuildSignedInKeyboard(),
+                    cancellationToken);
+            }
+
+            var activeBattle = _stateCache.ClearActiveBattle(chatId);
+            if (activeBattle != null)
+            {
+                _ = TryUpdateActiveBattleStatusAsync(chatId, activeBattle.StatusMessageId, cancellationToken);
+                return _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatActiveBattleCancelledMessage(),
+                    TelegramMessageFormatter.BuildPostBattleKeyboard(),
+                    cancellationToken);
+            }
+
             return _transport.SendTextMessageAsync(
                 chatId,
-                "Action cancelled\n\nUse the menu to start again",
+                TelegramMessageFormatter.FormatGenericCancelledMessage(),
                 TelegramMessageFormatter.BuildMainMenuKeyboard(_signupUrl),
                 cancellationToken);
+        }
+
+        private async Task TryUpdatePendingBattleStatusAsync(long chatId, int messageId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _transport.EditMessageTextAsync(
+                    chatId,
+                    messageId,
+                    TelegramMessageFormatter.FormatBattleCancelledStatusMessage(),
+                    TelegramMessageFormatter.BuildSignedInKeyboard(),
+                    cancellationToken);
+            }
+            catch
+            {
+            }
+        }
+
+        private async Task TryUpdateActiveBattleStatusAsync(long chatId, int messageId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _transport.EditMessageTextAsync(
+                    chatId,
+                    messageId,
+                    TelegramMessageFormatter.FormatActiveBattleCancelledStatusMessage(),
+                    TelegramMessageFormatter.BuildPostBattleKeyboard(),
+                    cancellationToken);
+            }
+            catch
+            {
+            }
         }
     }
 }

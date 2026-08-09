@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
 using DualMind.API.Core.Models;
 using DualMind.API.Infrastructure.Data;
 using Newtonsoft.Json;
@@ -11,6 +9,7 @@ using Newtonsoft.Json;
 namespace DualMind.API.Controllers.Admin
 {
     [Route("api/admin/comparisons")]
+    [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
     public class AdminComparisonsController : ControllerBase
     {
         private readonly IAdminSupabaseClient _supabase;
@@ -22,42 +21,48 @@ namespace DualMind.API.Controllers.Admin
             _supabase = supabase;
         }
 
-        // GET api/admin/comparisons - Get all comparisons with pagination
-        [HttpGet]
-        [Route("")]
-        public async Task<IActionResult> GetAll(int page = 1, int limit = 50)
+        /// <summary>
+        /// GET api/admin/comparisons?page=&pageSize=&search=&userId=&isRevealed=
+        /// </summary>
+        [HttpGet("")]
+        public async Task<IActionResult> GetAll(int page = 1, int pageSize = 50, string search = null, Guid? userId = null, bool? isRevealed = null)
         {
             try
             {
                 if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
+                if (pageSize < 1) pageSize = 1;
+                if (pageSize > 500) pageSize = 500;
 
-                int offset = (page - 1) * limit;
-                var query = $"order=created_at.desc&limit={limit}&offset={offset}";
+                int offset = (page - 1) * pageSize;
+                var filters = new List<string>();
+
+                if (!string.IsNullOrEmpty(search))
+                    filters.Add($"prompt_text=ilike.*{Uri.EscapeDataString(search)}*");
+                if (userId.HasValue)
+                    filters.Add($"user_id=eq.{userId.Value}");
+                if (isRevealed.HasValue)
+                    filters.Add($"is_revealed=eq.{isRevealed.Value.ToString().ToLowerInvariant()}");
+
+                var filterQuery = string.Join("&", filters);
+                var query = (string.IsNullOrEmpty(filterQuery) ? "" : filterQuery + "&") + $"order=created_at.desc&limit={pageSize}&offset={offset}";
+
                 var result = await _supabase.GetAllAsync(TABLE, query);
                 var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
 
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN);
+                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
 
-                return Ok(new {
-                    success = true,
-                    data = comparisons,
-                    count = comparisons?.Count ?? 0,
-                    total = total,
-                    page = page,
-                    limit = limit
-                });
+                return Ok(new ApiResponse<List<Comparison>> { Success = true, Data = comparisons, Total = total, Page = page, PageSize = pageSize });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<List<Comparison>> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/comparisons/{id} - Get comparison by ID
-        [HttpGet]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// GET api/admin/comparisons/{id}
+        /// </summary>
+        [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id)
         {
             try
@@ -66,73 +71,20 @@ namespace DualMind.API.Controllers.Admin
                 var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
 
                 if (comparisons == null || comparisons.Count == 0)
-                    return NotFound();
+                    return NotFound(new ApiResponse<Comparison> { Success = false, Error = "Comparison not found" });
 
-                return Ok(new { success = true, data = comparisons[0] });
+                return Ok(new ApiResponse<Comparison> { Success = true, Data = comparisons[0] });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<Comparison> { Success = false, Error = ex.Message });
             }
         }
 
-        // GET api/admin/comparisons/user/{userId} - Get comparisons by user
-        [HttpGet]
-        [Route("user/{userId:guid}")]
-        public async Task<IActionResult> GetByUser(Guid userId, int page = 1, int limit = 50)
-        {
-            try
-            {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                int offset = (page - 1) * limit;
-                var filterQuery = $"user_id=eq.{userId}";
-                var query = $"{filterQuery}&order=created_at.desc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-
-                return Ok(new { success = true, data = comparisons, count = comparisons?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // GET api/admin/comparisons/model/{modelId} - Get comparisons involving a specific model
-        [HttpGet]
-        [Route("model/{modelId:guid}")]
-        public async Task<IActionResult> GetByModel(Guid modelId, int page = 1, int limit = 50)
-        {
-            try
-            {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                int offset = (page - 1) * limit;
-                var filterQuery = $"or=(model1_id.eq.{modelId},model2_id.eq.{modelId})";
-                var query = $"{filterQuery}&order=created_at.desc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-
-                return Ok(new { success = true, data = comparisons, count = comparisons?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // DELETE api/admin/comparisons/{id} - Delete comparison
-        [HttpDelete]
-        [Route("{id:guid}")]
+        /// <summary>
+        /// DELETE api/admin/comparisons/{id}
+        /// </summary>
+        [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
             try
@@ -142,92 +94,14 @@ namespace DualMind.API.Controllers.Admin
                 if (!response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    return BadRequest( new { success = false, error = content });
+                    return BadRequest(new ApiResponse<object> { Success = false, Error = content });
                 }
 
-                return Ok(new { success = true, message = "Comparison deleted successfully" });
+                return Ok(new ApiResponse<object> { Success = true, Message = "Comparison deleted successfully" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // DELETE api/admin/comparisons/user/{userId} - Delete all comparisons for a user
-        [HttpDelete]
-        [Route("user/{userId:guid}")]
-        public async Task<IActionResult> DeleteByUser(Guid userId)
-        {
-            try
-            {
-                var response = await _supabase.DeleteAsync(TABLE, "user_id", userId.ToString());
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var content = await response.Content.ReadAsStringAsync();
-                    return BadRequest( new { success = false, error = content });
-                }
-
-                return Ok(new { success = true, message = "All comparisons for user deleted successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // GET api/admin/comparisons/search - Search comparisons by prompt
-        [HttpGet]
-        [Route("search")]
-        public async Task<IActionResult> Search(string prompt = null, int page = 1, int limit = 50)
-        {
-            try
-            {
-                if (page < 1) page = 1;
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                int offset = (page - 1) * limit;
-                var filters = new List<string>();
-
-                if (!string.IsNullOrEmpty(prompt))
-                    filters.Add($"prompt_text=ilike.*{Uri.EscapeDataString(prompt)}*");
-
-                var filterQuery = string.Join("&", filters);
-                var query = filterQuery + $"&order=created_at.desc&limit={limit}&offset={offset}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
-
-                var total = await _supabase.CountFastAsync(TABLE, ID_COLUMN, filterQuery);
-
-                return Ok(new { success = true, data = comparisons, count = comparisons?.Count ?? 0, total = total, page = page, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
-            }
-        }
-
-        // GET api/admin/comparisons/recent - Get recent comparisons (last 24 hours)
-        [HttpGet]
-        [Route("recent")]
-        public async Task<IActionResult> GetRecent(int hours = 24, int limit = 200)
-        {
-            try
-            {
-                if (limit < 1) limit = 1;
-                if (limit > 500) limit = 500;
-
-                var since = DateTime.UtcNow.AddHours(-hours).ToString("yyyy-MM-ddTHH:mm:ss");
-                var query = $"created_at=gte.{since}&order=created_at.desc&limit={limit}";
-                var result = await _supabase.GetAllAsync(TABLE, query);
-                var comparisons = JsonConvert.DeserializeObject<List<Comparison>>(result);
-
-                return Ok(new { success = true, data = comparisons, count = comparisons?.Count ?? 0, hours = hours, limit = limit });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, error = ex.Message });
+                return StatusCode(500, new ApiResponse<object> { Success = false, Error = ex.Message });
             }
         }
     }

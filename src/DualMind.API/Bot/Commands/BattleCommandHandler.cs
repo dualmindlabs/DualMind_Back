@@ -5,6 +5,7 @@ using DualMind.API.Bot.Models;
 using DualMind.API.Bot.Transport;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace DualMind.API.Bot.Commands
 {
@@ -43,18 +44,34 @@ namespace DualMind.API.Bot.Commands
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Sign in first and then send /battle again",
+                    TelegramMessageFormatter.FormatBattleRequiresSignInMessage(),
                     TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
                     cancellationToken);
                 return;
             }
 
-            if (_stateCache.GetActiveBattle(chatId) != null)
+            var pendingBattle = _stateCache.GetPendingBattle(chatId);
+            if (pendingBattle != null)
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Finish voting on the current battle before starting a new one",
-                    null,
+                    TelegramMessageFormatter.FormatBattleInProgressMessage(
+                        pendingBattle.Prompt,
+                        _timeProvider.GetUtcNow() - pendingBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
+                    cancellationToken);
+                return;
+            }
+
+            var activeBattle = _stateCache.GetActiveBattle(chatId);
+            if (activeBattle != null)
+            {
+                await _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatActiveBattleReminderMessage(
+                        activeBattle.Prompt,
+                        _timeProvider.GetUtcNow() - activeBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
                 return;
             }
@@ -62,8 +79,8 @@ namespace DualMind.API.Bot.Commands
             _stateCache.SetAwaitingBattlePrompt(chatId);
             await _transport.SendTextMessageAsync(
                 chatId,
-                "Send the prompt you want both agents to answer",
-                null,
+                TelegramMessageFormatter.FormatBattlePromptRequestMessage(),
+                TelegramMessageFormatter.BuildCancelKeyboard(),
                 cancellationToken);
         }
 
@@ -74,20 +91,36 @@ namespace DualMind.API.Bot.Commands
                 _stateCache.SetAwaitingBattlePrompt(chatId);
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Send a non empty prompt to start the battle",
-                    null,
+                    TelegramMessageFormatter.FormatEmptyPromptMessage(),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
+                    cancellationToken);
+                return;
+            }
+
+            var pendingBattle = _stateCache.GetPendingBattle(chatId);
+            if (pendingBattle != null)
+            {
+                await _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatBattleInProgressMessage(
+                        pendingBattle.Prompt,
+                        _timeProvider.GetUtcNow() - pendingBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
                 return;
             }
 
             _stateCache.ClearConversationState(chatId);
 
-            if (_stateCache.GetActiveBattle(chatId) != null)
+            var activeBattle = _stateCache.GetActiveBattle(chatId);
+            if (activeBattle != null)
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Finish voting on the current battle before starting a new one",
-                    null,
+                    TelegramMessageFormatter.FormatActiveBattleReminderMessage(
+                        activeBattle.Prompt,
+                        _timeProvider.GetUtcNow() - activeBattle.StartedAt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
                     cancellationToken);
                 return;
             }
@@ -97,7 +130,7 @@ namespace DualMind.API.Bot.Commands
             {
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "Sign in first and then start a battle",
+                    TelegramMessageFormatter.FormatBattleRequiresSignInMessage(),
                     TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
                     cancellationToken);
                 return;
@@ -108,7 +141,7 @@ namespace DualMind.API.Bot.Commands
                 var seconds = Math.Max(1, (int)Math.Ceiling(remainingCooldown.TotalSeconds));
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    $"Please wait {seconds}s before starting another battle",
+                    TelegramMessageFormatter.FormatBattleCooldownMessage(seconds),
                     null,
                     cancellationToken);
                 return;
@@ -116,105 +149,12 @@ namespace DualMind.API.Bot.Commands
 
             var statusMessage = await _transport.SendTextMessageAsync(
                 chatId,
-                "Starting battle",
-                null,
+                TelegramMessageFormatter.FormatBattleQueuedMessage(prompt),
+                TelegramMessageFormatter.BuildCancelKeyboard(),
                 cancellationToken);
 
-            try
-            {
-                var battleTask = StartBattleWithRetryAsync(chatId, prompt, session, cancellationToken);
-                var softTimeoutTask = Task.Delay(TimeSpan.FromSeconds(_options.SoftTimeoutSeconds), cancellationToken);
-
-                var completedTask = await Task.WhenAny(battleTask, softTimeoutTask);
-                if (completedTask == softTimeoutTask && !battleTask.IsCompleted)
-                {
-                    await _transport.EditMessageTextAsync(
-                        chatId,
-                        statusMessage.MessageId,
-                        "Taking longer than usual. Still waiting for both agents",
-                        null,
-                        cancellationToken);
-                }
-
-                var battle = await battleTask;
-                if (battle == null)
-                {
-                    await _transport.EditMessageTextAsync(
-                        chatId,
-                        statusMessage.MessageId,
-                        "Session expired. Sign in again and retry the battle",
-                        TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
-                        cancellationToken);
-                    return;
-                }
-
-                var agentAName = battle.Agent1?.Model?.DisplayName ?? battle.Agent1?.Model?.Name ?? "Agent A";
-                var agentBName = battle.Agent2?.Model?.DisplayName ?? battle.Agent2?.Model?.Name ?? "Agent B";
-                var agentAResponse = battle.Agent1?.Message ?? string.Empty;
-                var agentBResponse = battle.Agent2?.Message ?? string.Empty;
-
-                var agentAMessage = await _transport.SendTextMessageAsync(
-                    chatId,
-                    TelegramMessageFormatter.FormatMaskedBattleMessage("Agent A", agentAResponse),
-                    null,
-                    cancellationToken);
-
-                var agentBMessage = await _transport.SendTextMessageAsync(
-                    chatId,
-                    TelegramMessageFormatter.FormatMaskedBattleMessage("Agent B", agentBResponse),
-                    TelegramMessageFormatter.BuildVoteKeyboard(battle.ComparisonId),
-                    cancellationToken);
-
-                _stateCache.SetActiveBattle(chatId, new BattleSession
-                {
-                    ComparisonId = battle.ComparisonId,
-                    Prompt = prompt,
-                    AgentAResponse = agentAResponse,
-                    AgentBResponse = agentBResponse,
-                    AgentAModelDisplayName = agentAName,
-                    AgentBModelDisplayName = agentBName,
-                    AgentAMessageId = agentAMessage.MessageId,
-                    AgentBMessageId = agentBMessage.MessageId,
-                    StartedAt = _timeProvider.GetUtcNow()
-                });
-
-                try
-                {
-                    await _transport.DeleteMessageAsync(chatId, statusMessage.MessageId, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Failed to delete battle status message {MessageId}", statusMessage.MessageId);
-                }
-            }
-            catch (DualMindBotApiException ex)
-            {
-                await _transport.EditMessageTextAsync(
-                    chatId,
-                    statusMessage.MessageId,
-                    $"Battle failed: {TelegramMessageFormatter.EscapeMarkdown(ex.Message)}",
-                    null,
-                    cancellationToken);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                await _transport.EditMessageTextAsync(
-                    chatId,
-                    statusMessage.MessageId,
-                    "The battle timed out before both agents replied. Please try again",
-                    null,
-                    cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected battle failure for chat {ChatId}", chatId);
-                await _transport.EditMessageTextAsync(
-                    chatId,
-                    statusMessage.MessageId,
-                    "Something went wrong while starting the battle. Please try again",
-                    null,
-                    cancellationToken);
-            }
+            var pendingOperation = _stateCache.BeginPendingBattle(chatId, prompt, statusMessage.MessageId, cancellationToken);
+            _ = RunPendingBattleAsync(chatId, prompt, session, pendingOperation);
         }
 
         public async Task HandleVoteAsync(long chatId, string callbackQueryId, Guid comparisonId, string voteChoice, CancellationToken cancellationToken)
@@ -223,7 +163,7 @@ namespace DualMind.API.Bot.Commands
             {
                 await _transport.AnswerCallbackQueryAsync(
                     callbackQueryId,
-                    "That vote is no longer available.",
+                    TelegramMessageFormatter.FormatVoteExpiredMessage(),
                     false,
                     cancellationToken);
                 return;
@@ -231,7 +171,7 @@ namespace DualMind.API.Bot.Commands
 
             await _transport.AnswerCallbackQueryAsync(
                 callbackQueryId,
-                "Submitting vote",
+                TelegramMessageFormatter.FormatVoteSubmittingMessage(),
                 false,
                 cancellationToken);
 
@@ -244,7 +184,7 @@ namespace DualMind.API.Bot.Commands
                     _stateCache.ResetVote(chatId);
                     await _transport.SendTextMessageAsync(
                         chatId,
-                        "Session expired. Sign in again and try voting once more",
+                        TelegramMessageFormatter.FormatVoteSessionExpiredMessage(),
                         TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
                         cancellationToken);
                     return;
@@ -264,12 +204,19 @@ namespace DualMind.API.Bot.Commands
                     null,
                     cancellationToken);
 
+                await UpdateStatusOrSendAsync(
+                    chatId,
+                    battleSession.StatusMessageId,
+                    TelegramMessageFormatter.FormatVoteSuccessStatusMessage(battleSession.Prompt),
+                    TelegramMessageFormatter.BuildPostBattleKeyboard(),
+                    cancellationToken);
+
                 _stateCache.CompleteBattle(chatId);
 
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    TelegramMessageFormatter.EscapeMarkdown(voteResponse.Message ?? "Vote recorded"),
-                    null,
+                    voteResponse.Message ?? TelegramMessageFormatter.FormatVoteRecordedFallbackMessage(),
+                    TelegramMessageFormatter.BuildPostBattleKeyboard(),
                     cancellationToken);
             }
             catch (Exception ex)
@@ -278,9 +225,155 @@ namespace DualMind.API.Bot.Commands
                 _logger.LogError(ex, "Failed to submit vote for chat {ChatId}", chatId);
                 await _transport.SendTextMessageAsync(
                     chatId,
-                    "I could not record that vote. Please try again",
+                    TelegramMessageFormatter.FormatVoteFailedMessage(),
                     null,
                     cancellationToken);
+            }
+        }
+
+        private async Task RunPendingBattleAsync(long chatId, string prompt, TelegramAuthSession session, PendingBattleOperation pendingBattle)
+        {
+            var heartbeatTask = RunBattleHeartbeatAsync(chatId, pendingBattle);
+            try
+            {
+                var battleTask = StartBattleWithRetryAsync(chatId, prompt, session, pendingBattle.CancellationToken);
+                var softTimeoutTask = Task.Delay(TimeSpan.FromSeconds(_options.SoftTimeoutSeconds), pendingBattle.CancellationToken);
+
+                var completedTask = await Task.WhenAny(battleTask, softTimeoutTask);
+                if (completedTask == softTimeoutTask &&
+                    !battleTask.IsCompleted &&
+                    !pendingBattle.CancellationToken.IsCancellationRequested)
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleStillRunningMessage(
+                            pendingBattle.Prompt,
+                            _timeProvider.GetUtcNow() - pendingBattle.StartedAt),
+                        TelegramMessageFormatter.BuildCancelKeyboard(),
+                        CancellationToken.None);
+                }
+
+                var battle = await battleTask;
+                if (!_stateCache.TryCompletePendingBattle(chatId, pendingBattle.OperationId, out _))
+                {
+                    return;
+                }
+
+                if (battle == null)
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleSessionExpiredMessage(),
+                        TelegramMessageFormatter.BuildMainMenuKeyboard(_options.SignupUrl),
+                        CancellationToken.None);
+                    return;
+                }
+
+                if (!battle.Success || battle.Agent1 == null || battle.Agent2 == null || battle.ComparisonId == Guid.Empty)
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleIncompleteMessage(),
+                        TelegramMessageFormatter.BuildSignedInKeyboard(),
+                        CancellationToken.None);
+                    return;
+                }
+
+                var agentAName = battle.Agent1.Model?.DisplayName ?? battle.Agent1.Model?.Name ?? "Agent A";
+                var agentBName = battle.Agent2.Model?.DisplayName ?? battle.Agent2.Model?.Name ?? "Agent B";
+                var agentAResponse = battle.Agent1.Message ?? string.Empty;
+                var agentBResponse = battle.Agent2.Message ?? string.Empty;
+
+                var agentAMessage = await _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatMaskedBattleMessage("Agent A", agentAResponse),
+                    null,
+                    pendingBattle.CancellationToken);
+
+                var agentBMessage = await _transport.SendTextMessageAsync(
+                    chatId,
+                    TelegramMessageFormatter.FormatMaskedBattleMessage("Agent B", agentBResponse),
+                    TelegramMessageFormatter.BuildVoteKeyboard(battle.ComparisonId),
+                    pendingBattle.CancellationToken);
+
+                _stateCache.SetActiveBattle(chatId, new BattleSession
+                {
+                    ComparisonId = battle.ComparisonId,
+                    Prompt = prompt,
+                    AgentAResponse = agentAResponse,
+                    AgentBResponse = agentBResponse,
+                    AgentAModelDisplayName = agentAName,
+                    AgentBModelDisplayName = agentBName,
+                    StatusMessageId = pendingBattle.StatusMessageId,
+                    AgentAMessageId = agentAMessage.MessageId,
+                    AgentBMessageId = agentBMessage.MessageId,
+                    StartedAt = _timeProvider.GetUtcNow()
+                });
+
+                await UpdateStatusOrSendAsync(
+                    chatId,
+                    pendingBattle.StatusMessageId,
+                    TelegramMessageFormatter.FormatBattleReadyMessage(prompt),
+                    TelegramMessageFormatter.BuildCancelKeyboard(),
+                    CancellationToken.None);
+            }
+            catch (DualMindBotApiException ex)
+            {
+                if (_stateCache.TryCompletePendingBattle(chatId, pendingBattle.OperationId, out _))
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleApiFailureMessage(ex.Message),
+                        TelegramMessageFormatter.BuildSignedInKeyboard(),
+                        CancellationToken.None);
+                }
+            }
+            catch (OperationCanceledException) when (pendingBattle.CancellationToken.IsCancellationRequested)
+            {
+                if (_stateCache.TryCompletePendingBattle(chatId, pendingBattle.OperationId, out _))
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleCancelledStatusMessage(),
+                        TelegramMessageFormatter.BuildSignedInKeyboard(),
+                        CancellationToken.None);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                if (_stateCache.TryCompletePendingBattle(chatId, pendingBattle.OperationId, out _))
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleTimedOutMessage(),
+                        TelegramMessageFormatter.BuildSignedInKeyboard(),
+                        CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected battle failure for chat {ChatId}", chatId);
+                if (_stateCache.TryCompletePendingBattle(chatId, pendingBattle.OperationId, out _))
+                {
+                    await UpdateStatusOrSendAsync(
+                        chatId,
+                        pendingBattle.StatusMessageId,
+                        TelegramMessageFormatter.FormatBattleUnexpectedFailureMessage(),
+                        TelegramMessageFormatter.BuildSignedInKeyboard(),
+                        CancellationToken.None);
+                }
+            }
+            finally
+            {
+                pendingBattle.Cancel();
+                await AwaitHeartbeatAsync(heartbeatTask);
+                pendingBattle.Dispose();
             }
         }
 
@@ -292,13 +385,13 @@ namespace DualMind.API.Bot.Commands
             }
             catch (DualMindBotApiException ex) when (ex.IsUnauthorized)
             {
-                session = await _authService.ForceRefreshSessionAsync(chatId, cancellationToken);
-                if (session == null)
+                var refreshedSession = await _authService.ForceRefreshSessionAsync(chatId, cancellationToken);
+                if (refreshedSession == null)
                 {
                     return null;
                 }
 
-                return await _apiClient.StartBattleAsync(session.AccessToken, prompt, cancellationToken);
+                return await _apiClient.StartBattleAsync(refreshedSession.AccessToken, prompt, cancellationToken);
             }
         }
 
@@ -323,6 +416,66 @@ namespace DualMind.API.Bot.Commands
                 }
 
                 return await _apiClient.SubmitVoteAsync(session.AccessToken, comparisonId, voteChoice, voteDurationMs, cancellationToken);
+            }
+        }
+
+        private async Task UpdateStatusOrSendAsync(long chatId, int statusMessageId, string text, InlineKeyboardMarkup? replyMarkup, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _transport.EditMessageTextAsync(
+                    chatId,
+                    statusMessageId,
+                    text,
+                    replyMarkup,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to edit status message {MessageId} for chat {ChatId}; sending a new message instead.", statusMessageId, chatId);
+                await _transport.SendTextMessageAsync(chatId, text, replyMarkup, cancellationToken);
+            }
+        }
+
+        private async Task RunBattleHeartbeatAsync(long chatId, PendingBattleOperation pendingBattle)
+        {
+            var heartbeatSeconds = Math.Max(1, _options.BattleHeartbeatSeconds);
+
+            try
+            {
+                await SafeSendTypingAsync(chatId, pendingBattle.CancellationToken);
+
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(heartbeatSeconds));
+                while (await timer.WaitForNextTickAsync(pendingBattle.CancellationToken))
+                {
+                    await SafeSendTypingAsync(chatId, pendingBattle.CancellationToken);
+                }
+            }
+            catch (OperationCanceledException) when (pendingBattle.CancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private async Task SafeSendTypingAsync(long chatId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _transport.SendTypingAsync(chatId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to send typing action for chat {ChatId}", chatId);
+            }
+        }
+
+        private static async Task AwaitHeartbeatAsync(Task heartbeatTask)
+        {
+            try
+            {
+                await heartbeatTask;
+            }
+            catch
+            {
             }
         }
     }

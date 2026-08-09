@@ -34,6 +34,7 @@ public class StatsCommandHandlerTests
 
         var handler = new StatsCommandHandler(
             apiClient,
+            new FakeTelegramAuthService(),
             transport,
             Options.Create(new TelegramBotOptions { SignupUrl = "https://dualmind.arena/signup" }),
             NullLogger<StatsCommandHandler>.Instance);
@@ -41,7 +42,7 @@ public class StatsCommandHandlerTests
         await handler.HandleAsync(1, CancellationToken.None);
 
         var message = Assert.Single(transport.SentMessages);
-        Assert.Contains("Top Models", message.Message.Text);
+        Assert.Contains("Leaderboard", message.Message.Text);
         Assert.Contains("Model Alpha", message.Message.Text);
         Assert.NotNull(message.ReplyMarkup);
     }

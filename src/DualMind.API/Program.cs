@@ -138,7 +138,11 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authentication.IClaimsTransformation, DualMind.API.Infrastructure.Auth.RoleClaimsTransformation>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("admin"));
+});
 
 // Add HTTP Client for SupabaseService with configured headers
 builder.Services.AddHttpClient<DualMind.API.Infrastructure.Data.ISupabaseService, DualMind.API.Infrastructure.Data.SupabaseService>((serviceProvider, client) =>
@@ -204,8 +208,17 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-app.UseSwagger();
-app.UseSwaggerUI();
+var enableSwaggerInProduction =
+    string.Equals(
+        Environment.GetEnvironmentVariable("ENABLE_SWAGGER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+if (app.Environment.IsDevelopment() || enableSwaggerInProduction)
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // Global Exception Handler with proper logging
 app.UseExceptionHandler(exceptionHandlerApp =>
@@ -267,6 +280,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+
 
 // Warm up model cache on startup so provider routing works from first request
 _ = Task.Run(async () =>
