@@ -48,7 +48,7 @@
   // Custom domain routing
   "routes": [
     {
-      "pattern": "api.dualmind.arena/*",
+      "pattern": "api.dualmind.arena",
       "custom_domain": true
     }
   ]
