@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dualmind-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-09",
+
+  // Container configuration
+  "containers": [
+    {
+      "class_name": "DualMindContainer",
+      "image": "../src",
+      "instance_type": "standard-1",
+      "max_instances": 3,
+      "env_vars": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "ASPNETCORE_URLS": "http://+:8080",
+        "ENABLE_SWAGGER": "true",
+        "CLOUDFLARE_AI_GATEWAY_USE_BYOK": "true"
+      }
+    }
+  ],
+
+  // Durable Object binding for container lifecycle
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "DualMindContainer",
+        "name": "DUALMIND_CONTAINER"
+      }
+    ]
+  },
+
+  // Cron Trigger: ping container every 5 min to prevent cold starts
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  // Custom domain routing
+  "routes": [
+    {
+      "pattern": "api.dualmind.arena/*",
+      "custom_domain": true
+    }
+  ]
+}

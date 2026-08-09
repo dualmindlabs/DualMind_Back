@@ -281,6 +281,14 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// Lightweight health endpoint for CF Containers keep-alive cron & Docker HEALTHCHECK
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    service = "DualMind.API",
+    timestamp = DateTime.UtcNow
+})).AllowAnonymous();
+
 // Warm up model cache on startup so provider routing works from first request
 _ = Task.Run(async () =>
 {

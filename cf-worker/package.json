@@ -1,0 +1,16 @@
+{
+  "name": "dualmind-api-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secrets": "node scripts/setup-secrets.js"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  }
+}

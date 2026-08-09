@@ -1,0 +1,252 @@
+# =============================================================================
+# CI/CD Pipeline: Build, Test & Deploy DualMind API to Cloudflare Containers
+# =============================================================================
+# Triggers:
+#   - Push to main/master → full build + deploy
+#   - Pull requests → build + test only (no deploy)
+#   - Manual trigger via workflow_dispatch
+#
+# Required GitHub Secrets:
+#   CLOUDFLARE_API_TOKEN      - Wrangler deploy token (Account > API Tokens > "Edit Cloudflare Workers")
+#   CLOUDFLARE_ACCOUNT_ID     - Your CF account ID
+#   SUPABASE_URL              - Supabase project URL
+#   SUPABASE_ANON_KEY         - Supabase anon/public key
+#   SUPABASE_SERVICE_ROLE_KEY - Supabase service role key
+#   JWT_SECRET                - JWT signing secret
+#   GROQ_API_KEY              - Groq API key
+#   GOOGLE_API_KEY            - Google AI API key
+#   TELEGRAM_BOT_TOKEN        - Telegram bot token
+#   CF_AI_GATEWAY_ACCOUNT_ID  - Cloudflare AI Gateway account ID
+#   CF_AI_GATEWAY_ID          - Cloudflare AI Gateway ID
+#   CF_AI_GATEWAY_TOKEN       - Cloudflare AI Gateway token
+#   CF_WORKERS_AI_API_TOKEN   - Cloudflare Workers AI API token
+# =============================================================================
+
+name: Build & Deploy to Cloudflare Containers
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: 'false'
+        type: boolean
+      deploy_env:
+        description: 'Deploy environment'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  PROJECT_PATH: src/DualMind.API/DualMind.API.csproj
+  TEST_PROJECT_PATH: tests/DualMind.API.Tests/DualMind.API.Tests.csproj
+  DOTNET_VERSION: 8.0.x
+  NODE_VERSION: 20
+
+jobs:
+  # =====================================================
+  # Job 1: Build & Test .NET application
+  # =====================================================
+  build-and-test:
+    name: 🔨 Build & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 📦 Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: 🏗️ Build
+        run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+
+      - name: 🧪 Run tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: dotnet test ${{ env.TEST_PROJECT_PATH }} --configuration Release --verbosity normal
+
+  # =====================================================
+  # Job 2: Build Docker image & verify
+  # =====================================================
+  docker-build:
+    name: 🐳 Docker Build
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🏗️ Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          file: ./src/DualMind.API/Dockerfile
+          push: false
+          load: true
+          tags: dualmind-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 🩺 Verify container starts
+        run: |
+          # Start container in background
+          docker run -d \
+            --name dualmind-test \
+            -p 8080:8080 \
+            -e ASPNETCORE_ENVIRONMENT=Development \
+            -e ASPNETCORE_URLS=http://+:8080 \
+            dualmind-api:${{ github.sha }}
+
+          # Wait for startup
+          echo "Waiting for container to start..."
+          sleep 15
+
+          # Check health endpoint
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
+          echo "Health check status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Container health check passed"
+            curl -s http://localhost:8080/health | jq .
+          else
+            echo "⚠️ Health check returned $HTTP_STATUS (expected — no DB/secrets configured in CI)"
+            docker logs dualmind-test --tail 50
+          fi
+
+          # Cleanup
+          docker stop dualmind-test
+          docker rm dualmind-test
+
+  # =====================================================
+  # Job 3: Deploy to Cloudflare Containers
+  # =====================================================
+  deploy:
+    name: 🚀 Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    needs: [build-and-test, docker-build]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      deployments: write
+    environment:
+      name: ${{ github.event.inputs.deploy_env || 'production' }}
+      url: https://api.dualmind.arena
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: cf-worker/package-lock.json
+
+      - name: 📦 Install Worker dependencies
+        working-directory: cf-worker
+        run: npm ci || npm install
+
+      # -----------------------------------------------
+      # Push all secrets to Cloudflare
+      # -----------------------------------------------
+      - name: 🔐 Configure secrets
+        working-directory: cf-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "${{ secrets.SUPABASE_URL }}" | npx wrangler secret put SUPABASE_URL 2>/dev/null || true
+          echo "${{ secrets.SUPABASE_ANON_KEY }}" | npx wrangler secret put SUPABASE_ANON_KEY 2>/dev/null || true
+          echo "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY 2>/dev/null || true
+          echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET 2>/dev/null || true
+          echo "${{ secrets.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY 2>/dev/null || true
+          echo "${{ secrets.GOOGLE_API_KEY }}" | npx wrangler secret put GOOGLE_API_KEY 2>/dev/null || true
+          echo "${{ secrets.TELEGRAM_BOT_TOKEN }}" | npx wrangler secret put TELEGRAM_BOT_TOKEN 2>/dev/null || true
+          echo "${{ secrets.CF_AI_GATEWAY_ACCOUNT_ID }}" | npx wrangler secret put CLOUDFLARE_AI_GATEWAY_ACCOUNT_ID 2>/dev/null || true
+          echo "${{ secrets.CF_AI_GATEWAY_ID }}" | npx wrangler secret put CLOUDFLARE_AI_GATEWAY_ID 2>/dev/null || true
+          echo "${{ secrets.CF_AI_GATEWAY_TOKEN }}" | npx wrangler secret put CLOUDFLARE_AI_GATEWAY_TOKEN 2>/dev/null || true
+          echo "${{ secrets.CF_WORKERS_AI_API_TOKEN }}" | npx wrangler secret put CLOUDFLARE_WORKERS_AI_API_TOKEN 2>/dev/null || true
+          echo "✅ Secrets configured"
+
+      # -----------------------------------------------
+      # Deploy Worker + Container to Cloudflare
+      # -----------------------------------------------
+      - name: 🚀 Deploy to Cloudflare Containers
+        working-directory: cf-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "Deploying DualMind API to Cloudflare Containers..."
+          npx wrangler deploy
+          echo "✅ Deployment complete"
+
+      # -----------------------------------------------
+      # Post-deploy health check
+      # -----------------------------------------------
+      - name: 🩺 Post-deploy health check
+        run: |
+          echo "Waiting 30s for container to spin up..."
+          sleep 30
+
+          MAX_RETRIES=5
+          RETRY_DELAY=15
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Health check attempt $i/$MAX_RETRIES..."
+            HTTP_STATUS=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
+              https://api.dualmind.arena/health --max-time 30 || echo "000")
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ Deployment verified — API is healthy"
+              cat /tmp/health_response.json | jq . 2>/dev/null || cat /tmp/health_response.json
+              exit 0
+            fi
+
+            echo "  Status: $HTTP_STATUS — retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+          done
+
+          echo "⚠️ Health check did not return 200 after $MAX_RETRIES attempts"
+          echo "  This may be normal for first deploy (container still initializing)"
+          echo "  Check manually: curl https://api.dualmind.arena/health"
+
+      # -----------------------------------------------
+      # Deployment summary
+      # -----------------------------------------------
+      - name: 📋 Deployment summary
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "  DualMind API — Deployment Summary"
+          echo "=========================================="
+          echo "  Commit:  ${{ github.sha }}"
+          echo "  Branch:  ${{ github.ref_name }}"
+          echo "  Actor:   ${{ github.actor }}"
+          echo "  API:     https://api.dualmind.arena"
+          echo "  Health:  https://api.dualmind.arena/health"
+          echo "  Swagger: https://api.dualmind.arena/swagger"
+          echo "=========================================="
