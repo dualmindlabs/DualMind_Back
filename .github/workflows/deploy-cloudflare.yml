@@ -151,7 +151,7 @@ jobs:
       deployments: write
     environment:
       name: ${{ github.event.inputs.deploy_env || 'production' }}
-      url: https://api.dualmind.arena
+      url: https://api.dualmindlab.tech
 
     steps:
       - name: 📥 Checkout repository
@@ -215,7 +215,7 @@ jobs:
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Health check attempt $i/$MAX_RETRIES..."
             HTTP_STATUS=$(curl -s -o /tmp/health_response.json -w "%{http_code}" \
-              https://api.dualmind.arena/health --max-time 30 || echo "000")
+              https://api.dualmindlab.tech/health --max-time 30 || echo "000")
 
             if [ "$HTTP_STATUS" = "200" ]; then
               echo "✅ Deployment verified — API is healthy"
@@ -229,7 +229,7 @@ jobs:
 
           echo "⚠️ Health check did not return 200 after $MAX_RETRIES attempts"
           echo "  This may be normal for first deploy (container still initializing)"
-          echo "  Check manually: curl https://api.dualmind.arena/health"
+          echo "  Check manually: curl https://api.dualmindlab.tech/health"
 
       # -----------------------------------------------
       # Deployment summary
@@ -244,7 +244,7 @@ jobs:
           echo "  Commit:  ${{ github.sha }}"
           echo "  Branch:  ${{ github.ref_name }}"
           echo "  Actor:   ${{ github.actor }}"
-          echo "  API:     https://api.dualmind.arena"
-          echo "  Health:  https://api.dualmind.arena/health"
-          echo "  Swagger: https://api.dualmind.arena/swagger"
+          echo "  API:     https://api.dualmindlab.tech"
+          echo "  Health:  https://api.dualmindlab.tech/health"
+          echo "  Swagger: https://api.dualmindlab.tech/swagger"
           echo "=========================================="
