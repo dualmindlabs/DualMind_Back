@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "secrets": "node scripts/setup-secrets.js"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@cloudflare/containers": "latest"
