@@ -18,7 +18,10 @@ namespace DualMind.API.Controllers
                 status = "healthy",
                 message = "DualMind API is running",
                 timestamp = DateTime.UtcNow,
-                version = "1.0.0"
+                version = "1.0.0",
+                // Cloudflare injects this env var so you can identify which
+                // container instance handled this request during load tests.
+                instanceId = Environment.GetEnvironmentVariable("CLOUDFLARE_DURABLE_OBJECT_ID") ?? "local"
             });
         }
 
@@ -33,7 +36,8 @@ namespace DualMind.API.Controllers
                 status = "healthy",
                 message = "DualMind API is running",
                 timestamp = DateTime.UtcNow,
-                version = "1.0.0"
+                version = "1.0.0",
+                instanceId = Environment.GetEnvironmentVariable("CLOUDFLARE_DURABLE_OBJECT_ID") ?? "local"
             });
         }
     }
