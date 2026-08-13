@@ -1,22 +1,13 @@
 /**
  * DualMind API — Cloudflare Worker Entry Point
- *
+ * 
  * This Worker orchestrates the DualMind ASP.NET Core container:
- * - Routes all HTTP requests across multiple container instances (getRandom)
- * - Keeps ALL instances warm via cron trigger (every 5 min)
+ * - Routes all HTTP requests to the container
+ * - Keeps the container warm via cron trigger (every 5 min)
  * - Auto-sets Telegram webhook URL on deploy
- *
- * INSTANCE_COUNT must match max_instances in wrangler.jsonc.
- * Change this number to scale up/down the number of live containers.
  */
 
 import { Container, getContainer } from "@cloudflare/containers";
-
-// ---------------------------------------------------------------------------
-// How many container instances to spread load across.
-// Must match "max_instances" in wrangler.jsonc.
-// ---------------------------------------------------------------------------
-const INSTANCE_COUNT = 3;
 
 // ---------------------------------------------------------------------------
 // Container Definition
@@ -37,14 +28,14 @@ async function ensureTelegramWebhook(env, workerUrl) {
   }
 
   const webhookUrl = `${workerUrl}/api/telegram/webhook`;
-
+  
   try {
     // Check current webhook
     const infoRes = await fetch(
       `https://api.telegram.org/bot${botToken}/getWebhookInfo`
     );
     const info = await infoRes.json();
-
+    
     if (info.result?.url === webhookUrl) {
       console.log(`Telegram webhook already set to ${webhookUrl}`);
       return;
@@ -80,14 +71,10 @@ let webhookConfigured = false;
 // ---------------------------------------------------------------------------
 export default {
   /**
-   * Handle incoming HTTP requests.
-   * Distributes load randomly across INSTANCE_COUNT containers.
-   * Each container instance gets a unique numeric ID (0 to INSTANCE_COUNT-1).
+   * Handle incoming HTTP requests — forward everything to the container.
    */
   async fetch(request, env, ctx) {
-    // Generate a random instance ID between 0 and (INSTANCE_COUNT - 1)
-    const instanceId = Math.floor(Math.random() * INSTANCE_COUNT).toString();
-    const container = getContainer(env.DUALMIND_CONTAINER, instanceId);
+    const container = getContainer(env.DUALMIND_CONTAINER, "default");
 
     // Auto-configure Telegram webhook on first request after deploy
     if (!webhookConfigured) {
@@ -100,16 +87,30 @@ export default {
       );
     }
 
-    // Forward the request to the selected container instance
+    // Forward the request to the ASP.NET Core container
     return container.fetch(request);
   },
 
   /**
-   * Cron Trigger — lightweight heartbeat every 5 minutes.
-   * Only keeps the Worker itself alive, NOT pre-warming container instances.
-   * Container instances are created lazily on demand under load.
+   * Cron Trigger — runs every 5 minutes to keep the container warm.
+   * Prevents cold starts by ensuring the container never goes to sleep.
    */
   async scheduled(controller, env, ctx) {
-    console.log(`[heartbeat] Worker alive at ${new Date().toISOString()}`);
+    const container = getContainer(env.DUALMIND_CONTAINER, "default");
+
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const response = await container.fetch(
+            new Request("http://internal/health")
+          );
+          console.log(
+            `[keep-alive] Container health: ${response.status} at ${new Date().toISOString()}`
+          );
+        } catch (err) {
+          console.error("[keep-alive] Container ping failed:", err);
+        }
+      })()
+    );
   },
 };
