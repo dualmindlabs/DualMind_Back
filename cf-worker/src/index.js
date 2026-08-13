@@ -10,7 +10,7 @@
  * Change this number to scale up/down the number of live containers.
  */
 
-import { Container, getRandom } from "@cloudflare/containers";
+import { Container, getContainer } from "@cloudflare/containers";
 
 // ---------------------------------------------------------------------------
 // How many container instances to spread load across.
@@ -81,11 +81,13 @@ let webhookConfigured = false;
 export default {
   /**
    * Handle incoming HTTP requests.
-   * Uses getRandom() to distribute load across INSTANCE_COUNT containers.
+   * Distributes load randomly across INSTANCE_COUNT containers.
    * Each container instance gets a unique numeric ID (0 to INSTANCE_COUNT-1).
    */
   async fetch(request, env, ctx) {
-    const container = getRandom(env.DUALMIND_CONTAINER, INSTANCE_COUNT);
+    // Generate a random instance ID between 0 and (INSTANCE_COUNT - 1)
+    const instanceId = Math.floor(Math.random() * INSTANCE_COUNT).toString();
+    const container = getContainer(env.DUALMIND_CONTAINER, instanceId);
 
     // Auto-configure Telegram webhook on first request after deploy
     if (!webhookConfigured) {
