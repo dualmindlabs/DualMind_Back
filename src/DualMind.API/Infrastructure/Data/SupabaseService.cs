@@ -23,7 +23,7 @@ namespace DualMind.API.Infrastructure.Data
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            
+
             var config = settings.Value;
             _baseUrl = config.Url?.TrimEnd('/');
             _serviceKey = config.ServiceKey ?? config.Key;
@@ -32,6 +32,14 @@ namespace DualMind.API.Infrastructure.Data
                 _logger.LogWarning("Supabase URL missing");
             if (string.IsNullOrWhiteSpace(_serviceKey))
                 _logger.LogWarning("Supabase API key missing");
+
+            if (!string.IsNullOrWhiteSpace(_serviceKey))
+            {
+                if (!_client.DefaultRequestHeaders.Contains("apikey"))
+                    _client.DefaultRequestHeaders.Add("apikey", _serviceKey);
+                if (!_client.DefaultRequestHeaders.Contains("Authorization"))
+                    _client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_serviceKey}");
+            }
         }
 
         private string RestUrl => $"{_baseUrl}/rest/v1";
